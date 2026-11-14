@@ -10,8 +10,13 @@
 HSteamPipe IClientUtils::getCurrentSteamPipe()
 {
 	//Offset found in IClientUtils::GetAppId
+#if defined(__x86_64__)
+	const static int32_t offset = *reinterpret_cast<int32_t*>(Patterns::IClientUtils::Offset_GetPipeIndex.address + 0x2);
+	return *reinterpret_cast<HSteamPipe*>(reinterpret_cast<uintptr_t>(this) + static_cast<intptr_t>(offset));
+#else
 	const static auto offset = *reinterpret_cast<lm_address_t*>(Patterns::IClientUtils::Offset_GetPipeIndex.address + 0x2);
 	return *reinterpret_cast<HSteamPipe*>(this + offset);
+#endif
 }
 
 

@@ -42,7 +42,7 @@ namespace Apps
 	bool unlockApp(uint32_t appId, CAppOwnershipInfo* info);
 
 	bool checkAppOwnership(uint32_t appId, CAppOwnershipInfo* info);
-	void getSubscribedApps(uint32_t* appList, uint32_t size, uint32_t& count);
+	void getSubscribedApps(uint32_t* appList, size_t size, uint32_t& count);
 
 	// Publish the two independent sources behind the managed-DLC membership
 	// query. Appinfo refreshes replace only discoveries; config reloads replace

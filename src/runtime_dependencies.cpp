@@ -51,7 +51,16 @@ bool check()
 	static bool available = false;
 	std::call_once(once, []
 	{
-		const std::string missing = missingToolsOnPath(std::getenv("PATH"));
+		const char* pathEnv = std::getenv("PATH");
+		std::string effectivePath = pathEnv ? pathEnv : "";
+		// Inside SteamRT pressure-vessel, host utilities like unzip live
+		// under /run/host/usr/bin rather than the container's /usr/bin.
+		if (access("/run/host/usr/bin", F_OK) == 0)
+		{
+			if (!effectivePath.empty()) effectivePath += ':';
+			effectivePath += "/run/host/usr/bin:/run/host/bin";
+		}
+		const std::string missing = missingToolsOnPath(effectivePath.c_str());
 		available = missing.empty();
 		if (!available && g_pLog)
 		{

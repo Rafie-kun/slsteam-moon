@@ -247,14 +247,9 @@ static void setup()
 	g_clientPid = static_cast<long>(getpid());
 	g_clientStartTicks = CefPort::readProcStartTicks(g_clientPid);
 
-	// Strip ourselves from $LD_AUDIT so child processes Steam spawns
-	// (reaper, steamwebhelper, games) don't re-audit and re-run our
-	// hooks in foreign processes.  setup() also early-outs on non-steam
-	// processes, but cleaning the env is cheaper and avoids surprises.
-	cleanEnvVar("LD_AUDIT", "SLSsteam.so");
-	cleanEnvVar("LD_AUDIT", "library-inject.so");
-	cleanEnvVar("LD_AUDIT", "libSLSsteam.so");
-	cleanEnvVar("LD_AUDIT", "libSLS-library-inject.so");
+	// Defer stripping $LD_AUDIT until load() (once steamclient.so and steamui.so
+	// are mapped) so steamrt64's outer bootstrapper -> pv-runtime -> inner steam
+	// handoff preserves LD_AUDIT into the containerised client process.
 
 
 	if(!g_config.init())
@@ -547,6 +542,14 @@ static void load()
 			}
 		}
 	}
+
+	// Strip ourselves from $LD_AUDIT now that steamclient.so and steamui.so
+	// are mapped so child processes Steam spawns (reaper, steamwebhelper,
+	// games) don't re-audit and re-run our hooks in foreign processes.
+	cleanEnvVar("LD_AUDIT", "SLSsteam.so");
+	cleanEnvVar("LD_AUDIT", "library-inject.so");
+	cleanEnvVar("LD_AUDIT", "libSLSsteam.so");
+	cleanEnvVar("LD_AUDIT", "libSLS-library-inject.so");
 
 	auto path = std::filesystem::path(g_modSteamClient.path);
 	auto dir = path.parent_path();
@@ -1049,12 +1052,21 @@ namespace
 	}
 }
 
+#if defined(__x86_64__)
+extern "C" uintptr_t la_symbind64(Elf64_Sym* sym,
+                                  __attribute__((unused)) unsigned int ndx,
+                                  uintptr_t* refcook,
+                                  uintptr_t* defcook,
+                                  __attribute__((unused)) unsigned int* flags,
+                                  const char* symname)
+#else
 extern "C" uintptr_t la_symbind32(Elf32_Sym* sym,
                                   __attribute__((unused)) unsigned int ndx,
                                   uintptr_t* refcook,
                                   uintptr_t* defcook,
                                   __attribute__((unused)) unsigned int* flags,
                                   const char* symname)
+#endif
 {
 	if (sym == nullptr)
 		return 0;

@@ -49,9 +49,15 @@ public:
 	constexpr static uint32_t MAX_PLAUSIBLE_SIZE = 100u * 1024 * 1024;
 
 	// Base field offsets on the classic (stable) layout.
+#if defined(__x86_64__)
+	constexpr static std::size_t OFF_BODY = 0x8;
+	constexpr static std::size_t OFF_SIZE = 0x10;
+	constexpr static std::size_t OFF_ORIGBODY = 0x18;
+#else
 	constexpr static std::size_t OFF_BODY = 0x4;
 	constexpr static std::size_t OFF_SIZE = 0x8;
 	constexpr static std::size_t OFF_ORIGBODY = 0x10;
+#endif
 
 	// Detected field shift (0 = classic/stable layout).  int, single writer
 	// (detectLayout runs on the CM receive thread); benign as a plain global.
@@ -59,11 +65,12 @@ public:
 
 private:
 
-	// Raw storage.  Fields live at their base offset + s_fieldShift.  0x20 bytes
-	// holds every field of both layouts (the highest is originalBody at
-	// 0x10 + 8 = 0x18, four bytes, ending at 0x1C); a Steam beta packet is
-	// larger still, and this only ever overlays it.
+	// Raw storage.  Fields live at their base offset + s_fieldShift.
+#if defined(__x86_64__)
+	uint8_t raw_[0x30];
+#else
 	uint8_t raw_[0x20];
+#endif
 
 	template <typename T>
 	T fieldGet(std::size_t off) const
@@ -81,7 +88,11 @@ private:
 	static bool plausibleBody(CNetPacketBody* body)
 	{
 		const auto address = reinterpret_cast<std::uintptr_t>(body);
+#if defined(__x86_64__)
+		return address > 0xFFFFFFFFULL && address < 0x0000800000000000ULL;
+#else
 		return address >= 0x10000u && address < 0xFFFFF000u;
+#endif
 	}
 
 public:
@@ -262,4 +273,8 @@ public:
 	void free();
 }; //0x20
 
+#if defined(__x86_64__)
+static_assert(sizeof(CNetPacket) == 0x30);
+#else
 static_assert(sizeof(CNetPacket) == 0x20);
+#endif

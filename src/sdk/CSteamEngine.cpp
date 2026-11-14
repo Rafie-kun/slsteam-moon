@@ -33,8 +33,12 @@ CServerPipe* CSteamEngine::getServerPipe(const HSteamPipe pipe)
 
 CUser* CSteamEngine::getUser(uint32_t index)
 {
+#if defined(__x86_64__)
+	const static auto offset = *reinterpret_cast<uint32_t*>(Patterns::CSteamEngine::Offset_User.address + 3);
+#else
 	const static auto offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_User.address + 0x2);
-	const auto vec = reinterpret_cast<const CUtlVector<CUser*>*>(this + offset);
+#endif
+	const auto vec = reinterpret_cast<const CUtlVector<CUser*>*>(reinterpret_cast<uintptr_t>(this) + offset);
 	if (!vec->memory.base || index >= vec->size)
 	{
 		return nullptr;
@@ -49,8 +53,12 @@ IClientUtils* CSteamEngine::getUtils()
 	{
 		return nullptr;
 	}
+#if defined(__x86_64__)
+	const static lm_address_t offset = *reinterpret_cast<uint32_t*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 3);
+#else
 	const static lm_address_t offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 2);
-	return reinterpret_cast<IClientUtils*>(this + offset);
+#endif
+	return reinterpret_cast<IClientUtils*>(reinterpret_cast<uintptr_t>(this) + offset);
 }
 
 void CSteamEngine::setAppIdForCurrentPipe(uint32_t appId)
@@ -88,7 +96,7 @@ IClientCompat* getLocalClientCompat()
 	if (user == nullptr || instruction == 0 || instruction == LM_ADDRESS_BAD)
 		return nullptr;
 
-	std::array<std::uint8_t, 6> bytes{};
+	std::array<std::uint8_t, 7> bytes{};
 	if (LM_ReadMemory(instruction, bytes.data(), bytes.size()) != bytes.size())
 		return nullptr;
 	const auto offset = CompatLive::decodeManagerOffset(bytes);

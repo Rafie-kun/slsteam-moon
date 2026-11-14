@@ -1322,10 +1322,17 @@ int PatternRefresh::refreshInstallation(
 	std::array<std::string, 2> diagnostics;
 	for (std::size_t index = 0; index < modules.size(); ++index)
 	{
+		std::filesystem::path modulePath =
+		    steamRoot / "steamrt64" / specifications[index].moduleName;
+		if (!std::filesystem::exists(modulePath))
+		{
+			modulePath =
+			    steamRoot / "ubuntu12_32" / specifications[index].moduleName;
+		}
 		modules[index] = inspectModule(
 			specifications[index].component,
 			specifications[index].moduleName,
-			steamRoot / "ubuntu12_32" / specifications[index].moduleName,
+			modulePath,
 			patternRoot / ".state"
 			    / (std::string(specifications[index].component) + ".module.state"),
 			{},

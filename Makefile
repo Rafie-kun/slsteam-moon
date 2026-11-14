@@ -15,8 +15,8 @@
 # Force g++; clang miscompiles a few hooks.
 CXX := g++
 .DEFAULT_GOAL := all
-STEAMCLIENT ?= $(HOME)/.local/share/Steam/ubuntu12_32/steamclient.so
-STEAMUI ?= $(HOME)/.local/share/Steam/ubuntu12_32/steamui.so
+STEAMCLIENT ?= $(HOME)/.local/share/Steam/steamrt64/steamclient.so
+STEAMUI ?= $(HOME)/.local/share/Steam/steamrt64/steamui.so
 
 libs := $(wildcard lib/*.a)
 srcs := $(shell find src/ -type f -iname "*.cpp")
@@ -30,7 +30,7 @@ deps := $(objs:%.o=%.d)
 # FakeWalletBalance + malformed-config boot loops). We avoid throwing across
 # this boundary in the config path regardless, but pinning the landing pads
 # makes every remaining try/catch a reliable backstop.
-CXXFLAGS := -O3 -flto=auto -fPIC -m32 -std=c++20 \
+CXXFLAGS := -O3 -flto=auto -fPIC -m64 -std=c++20 \
             -fno-reorder-blocks-and-partition \
             -Wall -Wextra -Wpedantic -Wno-error=format-security \
             -D_GLIBCXX_USE_CXX11_ABI=0
@@ -69,13 +69,13 @@ test-manifestfetch:
 	/tmp/test_manifestfetch
 
 test-stats-provenance:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
 		-ffunction-sections -fdata-sections tools/test_stats_provenance.cpp \
 		-Wl,--gc-sections -pthread -o /tmp/test_stats_provenance
 	/tmp/test_stats_provenance
 
 test-familyshare: obj/sdk/protobufs/steammessages_base.pb.o
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
 		-ffunction-sections -fdata-sections tools/test_familyshare.cpp \
 		src/sdk/CNetPacket.cpp $^ lib/libprotobuf-lite.a \
 		-Wl,--gc-sections -pthread -o /tmp/test_familyshare
@@ -97,7 +97,7 @@ test-achievements:
 	/tmp/test_achievements
 
 test-achievement-scope: obj/sdk/protobufs/steammessages_clientserver_userstats.pb.o obj/sdk/protobufs/steammessages_base.pb.o
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
 		tools/test_achievement_scope.cpp src/feats/achievements.cpp src/feats/stats_policy.cpp \
 		$^ lib/libprotobuf-lite.a -pthread -o /tmp/test_achievement_scope
 	/tmp/test_achievement_scope
@@ -106,7 +106,7 @@ test-fakeappid-presence: obj/sdk/protobufs/encrypted_app_ticket.pb.o \
                           obj/sdk/protobufs/steammessages_base.pb.o \
                           obj/sdk/protobufs/steammessages_clientserver.pb.o \
                           obj/sdk/protobufs/steammessages_clientserver_2.pb.o
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -isystem include -I src \
 		-ffunction-sections -fdata-sections tools/test_fakeappid_presence.cpp \
 		src/feats/fakeappid.cpp src/sdk/CNetPacket.cpp $^ lib/libprotobuf-lite.a \
 		-Wl,--gc-sections -pthread -o /tmp/test_fakeappid_presence
@@ -118,13 +118,13 @@ test-fakeappid-wiring:
 	/tmp/test_fakeappid_wiring
 
 test-ticket:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
 		-Wall -Wextra -Wpedantic -Werror -I include -I src \
 		tools/test_ticket.cpp -o /tmp/test_ticket
 	/tmp/test_ticket
 
 test-process-runtime:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
 		-Wall -Wextra -Wpedantic \
 		-ffunction-sections -fdata-sections -I include -I src \
 		tools/test_process_runtime.cpp src/process.cpp \
@@ -132,7 +132,7 @@ test-process-runtime:
 	/tmp/test_process_runtime
 
 test-stats-audit: bin/SLSsteam.so
-	$(CXX) -m32 -std=c++20 -rdynamic tools/test_stats_audit.cpp -ldl -o /tmp/test_stats_audit
+	$(CXX) -m64 -std=c++20 -rdynamic tools/test_stats_audit.cpp -ldl -o /tmp/test_stats_audit
 	/tmp/test_stats_audit
 	LD_AUDIT=$(CURDIR)/bin/SLSsteam.so /tmp/test_stats_audit audit
 
@@ -148,7 +148,7 @@ bin/SLSsteam.so: $(objs) $(libs)
 # Loaded ahead of SLSsteam.so via $LD_AUDIT.
 bin/library-inject.so: tools/library-inject/main.cpp
 	@mkdir -p bin
-	$(CXX) -O3 -m32 -fPIC -shared -std=c++20 $< -o $@
+	$(CXX) -O3 -m64 -fPIC -shared -std=c++20 $< -o $@
 
 PATTERN_PUBLIC_KEY_HEX = $(shell tr -d '[:space:]' < res/pattern-public-key.hex 2>/dev/null)
 
@@ -204,7 +204,7 @@ test-cmwire: obj/sdk/protobufs/steammessages_base.pb.o \
              obj/sdk/protobufs/steammessages_clientserver_friends.pb.o \
              obj/sdk/protobufs/steammessages_clientserver_userstats.pb.o \
              obj/sdk/protobufs/encrypted_app_ticket.pb.o
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -DCMWIRE_PROTOBUF \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -DCMWIRE_PROTOBUF \
 		-I include tools/test_cmwire.cpp $^ lib/libprotobuf-lite.a \
 		-lpthread -o /tmp/test_cmwire
 	/tmp/test_cmwire
@@ -232,7 +232,7 @@ test-ascii:
 	/tmp/test_ascii
 
 test-dlc-scope:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
 		-Wall -Wextra -Wpedantic -I src -I include \
 		tools/test_dlc_scope.cpp src/feats/dlc.cpp \
 		src/feats/managed_dlc_scope.cpp -pthread \
@@ -240,7 +240,7 @@ test-dlc-scope:
 	/tmp/test_dlc_scope
 
 test-dlc-metadata:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
 		-Wall -Wextra -Wpedantic -I include -I src \
 		tools/test_dlc_metadata.cpp src/feats/dlc_metadata.cpp \
 		lib/libyaml-cpp.a -o /tmp/test_dlc_metadata
@@ -424,7 +424,7 @@ test-curl-timeout:
 	/tmp/test_curl_timeout
 
 test-contentserverdirectory:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
 		-Wall -Wextra -Wpedantic -Werror -I include -I src \
 		tools/test_contentserverdirectory.cpp src/utils/contentserverdirectory.cpp \
 		lib/libyaml-cpp.a -o /tmp/test_contentserverdirectory
@@ -482,7 +482,7 @@ test-library-dates:
 	/tmp/test_library_dates
 
 test-library-dates-hook:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 \
 		-fno-reorder-blocks-and-partition -ffunction-sections -fdata-sections \
 		-Wall -Wextra -Wpedantic -isystem include -I src \
 		tools/test_library_dates_hook.cpp src/feats/apps.cpp src/feats/librarydates.cpp \
@@ -515,7 +515,7 @@ test-cache-pair:
 	/tmp/test_cache_pair
 
 test-yaml-runtime:
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -I include \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -I include \
 		tools/test_yaml_runtime.cpp lib/libyaml-cpp.a -o /tmp/test_yaml_runtime
 	/tmp/test_yaml_runtime
 
@@ -523,7 +523,7 @@ test-yaml-runtime:
 # without choking on LTO bytecode from a different toolchain version.
 obj/feats/appinfo_vdf_test.o: src/feats/appinfo_vdf.cpp $(deps_early)
 	@mkdir -p obj/feats
-	$(CXX) -O2 -fno-lto -fPIC -m32 -std=c++20 -fno-reorder-blocks-and-partition \
+	$(CXX) -O2 -fno-lto -fPIC -m64 -std=c++20 -fno-reorder-blocks-and-partition \
 		-Wall -Wextra -Wpedantic -Wno-error=format-security \
 		-D_GLIBCXX_USE_CXX11_ABI=0 -DAPPINFO_VDF_TESTING \
 		-I include -isysteminclude -MMD -MP \
@@ -534,7 +534,7 @@ test-appinfo-transaction: obj/feats/appinfo_vdf_test.o obj/log.o obj/config.o \
 		obj/feats/depotkey.o obj/feats/manifestid.o obj/feats/librarydates.o \
 		obj/ownerwork.o obj/sdk/protobufs/steammessages_clientserver_appinfo.pb.o \
 		obj/sdk/protobufs/steammessages_base.pb.o
-	$(CXX) -m32 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -DAPPINFO_VDF_TESTING \
+	$(CXX) -m64 -std=c++20 -D_GLIBCXX_USE_CXX11_ABI=0 -DAPPINFO_VDF_TESTING \
 		-I include -isysteminclude tools/test_appinfo_transaction.cpp \
 		obj/feats/appinfo_vdf_test.o \
 		$(filter-out obj/feats/appinfo_vdf_test.o,$(filter obj/%.o,$^)) \

@@ -27,7 +27,7 @@ RUN dpkg --add-architecture i386 && \
         pkg-config && \
     rm -rf /var/lib/apt/lists/*
 
-# 32-bit pkg-config search path (matches scripts/_build-host.sh).
-ENV PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig
+# 64-bit pkg-config search path (matches steamrt64 / x86_64 builds).
+ENV PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig
 
 WORKDIR /build

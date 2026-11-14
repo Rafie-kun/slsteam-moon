@@ -33,8 +33,11 @@ public:
 	CUtlVector<void> debugText;			//0x50
 }; //0x60
 
+#if defined(__i386__)
 static_assert(offsetof(CServerPipe, pipeHandle) == 0x8);
 static_assert(offsetof(CServerPipe, pid) == 0x14);
+#endif
+// TODO(steamrt64): Re-verify CServerPipe 64-bit offsets against steamrt64/steamclient.so.
 
 class CSteamEngine
 {

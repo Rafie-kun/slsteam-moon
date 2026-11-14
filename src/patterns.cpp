@@ -855,7 +855,9 @@ bool Patterns::init()
 	// all four this way).  Re-derive each root structurally so a constant-only
 	// drift no longer needs a code change; on any failure the embedded root is
 	// kept verbatim (no regression).
+#if !defined(__x86_64__)
 	autoResolveIpcFrameRoots();
+#endif
 	for(auto& pattern : patterns())
 	{
 		if (!pattern->find())
@@ -892,6 +894,517 @@ using SigFollowMode = MemHlp::SigFollowMode;
 
 namespace Patterns
 {
+#if defined(__x86_64__)
+	Pattern_t ParentalSignatureCheck
+	{
+		"ParentalSignatureCheck",
+		"84 C0 75 68 8B 95 42 02 00 00 4C 8D A4 24 40 01 00 00 48 8D 35 ? ? ? ?",
+		SigFollowMode::None
+	};
+	Pattern_t ParentalSettingsReceived
+	{
+		"ParentalSettingsReceived",
+		"41 57 41 56 45 89 C6 41 55 49 89 F5 41 54 41 89 D4 55 48 89 FD",
+		SigFollowMode::None
+	};
+
+	Pattern_t TraceIPC
+	{
+		"TraceIPC",
+		"41 57 41 56 41 55 41 54 55 53 48 81 EC 28 01 00 00 48 89 3C 24",
+		SigFollowMode::None
+	};
+
+	namespace SteamUI
+	{
+		Pattern_t AppControllerRunFrame
+		{
+			"SteamUI::AppControllerRunFrame",
+			"41 57 41 56 41 55 41 54 55 53 48 83 EC 38 64 48 8B 1C 25 28 00 00 00 48 89 5C 24 28 48 89 FB E8 ? ? ? ? 66 0F EF C9",
+			SigFollowMode::None,
+			&g_modSteamUI,
+			"Patterns::SteamUI::AppControllerRunFrame"
+		};
+
+		Pattern_t GetAppByID
+		{
+			"SteamUI::GetAppByID",
+			"41 57 41 56 49 89 FE 41 55 41 54 55 53 48 83 EC 38 89 74 24 0C",
+			SigFollowMode::None,
+			&g_modSteamUI,
+			"Patterns::SteamUI::GetAppByID"
+		};
+
+		Pattern_t MarkAppChange
+		{
+			"SteamUI::MarkAppChange",
+			"41 57 41 89 F7 41 56 41 55 41 54 55 48 89 FD 53 48 83 EC 28",
+			SigFollowMode::None,
+			&g_modSteamUI,
+			"Patterns::SteamUI::MarkAppChange"
+		};
+
+		Pattern_t BuildCompleteAppOverviewChange
+		{
+			"SteamUI::BuildCompleteAppOverviewChange",
+			"41 57 41 56 41 55 41 54 55 48 89 F5 53 48 89 FB 48 81 EC D8 00 00 00 48 89 54 24 40",
+			SigFollowMode::None,
+			&g_modSteamUI,
+			"Patterns::SteamUI::BuildCompleteAppOverviewChange"
+		};
+
+		Pattern_t OwnershipFlagsReference
+		{
+			"SteamUI::OwnershipFlagsReference",
+			"41 8B 56 1C 48 8B BD B8 E6 FF FF 48 8D 35 ? ? ? ? E8 ? ? ? ?",
+			SigFollowMode::None,
+			&g_modSteamUI,
+			"Patterns::SteamUI::OwnershipFlagsReference"
+		};
+	}
+
+	namespace CAPIJob
+	{
+		Pattern_t GetPlayerStats
+		{
+			"CAPIJob::GetPlayerStats",
+			"41 57 31 F6 41 56 41 55 41 54 55 53 48 81 EC 18 02 00 00 64 48 8B 1C 25 28 00 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CCMInterface
+	{
+		Pattern_t RecvPkt
+		{
+			"CCMInterface::RecvPkt",
+			"41 57 41 56 41 55 41 54 49 89 FC 55 53 48 89 F3 48 81 EC 28 05 00 00 48 8B 2D ? ? ? ? 64 48 8B 04 25 28 00 00 00",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CCMInterface::RecvPkt"
+		};
+	}
+
+	namespace CProtoBufMsgBase
+	{
+		Pattern_t InitFromPacket
+		{
+			"CProtoBufMsgBase::InitFromPacket",
+			"41 55 41 54 55 53 48 89 FB 48 83 EC 48 48 8B 05 ? ? ? ? 64 4C 8B 24 25 28 00 00 00",
+			SigFollowMode::None
+		};
+		Pattern_t Send
+		{
+			"CProtoBufMsgBase::Send",
+			"55 53 48 89 FB 48 83 EC 08 80 3D ? ? ? ? 00 48 8B 7F 30",
+			SigFollowMode::None
+		};
+	};
+
+	namespace CSteamEngine
+	{
+		Pattern_t GetServerPipe
+		{
+			"CSteamEngine::GetServerPipe",
+			"85 F6 74 2C 0F B7 CE 31 D2 3B 4F 68 73 18 48 63 C1 48 C1 E0 04 48 03 47 48",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CSteamEngine::GetServerPipe"
+		};
+		Pattern_t Init
+		{
+			"CSteamEngine::Init",
+			"41 54 55 53 48 81 EC 10 01 00 00 64 48 8B 04 25 28 00 00 00 48 89 84 24 08 01 00 00 8B 87 ? ? 00 00",
+			SigFollowMode::None
+		};
+		Pattern_t SetAppIdForCurrentPipe
+		{
+			"CSteamEngine::SetAppIdForCurrentPipe",
+			"41 57 41 56 41 55 49 89 FD 41 54 41 89 D4 55 53 48 83 EC 38",
+			SigFollowMode::None
+		};
+		Pattern_t ProcessIPCFrame
+		{
+			"CSteamEngine::ProcessIPCFrame",
+			"41 55 49 89 CD 41 54 41 89 F4 55 48 89 FD 48 89 D7 53 48 89 D3",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CSteamEngine::ProcessIPCFrame"
+		};
+		Pattern_t Offset_ClientUtils
+		{
+			"CSteamEngine::m_ClientUtils",
+			"48 89 87 ? ? 00 00 48 8D 87 ? ? 00 00 48 89 C7 48 89 44 24 18",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CSteamEngine::Offset_ClientUtils"
+		};
+		Pattern_t Offset_User
+		{
+			"CSteamEngine::m_pUser",
+			"48 8B 8D ? ? 00 00 48 89 D8 48 C1 E0 04 48 8B 7C 01 08 48 85 FF 75 D1 48 83 C3 01 39 DA 7F E7 48 83 C4 08 5B 5D C3 CC",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CSteamEngine::Offset_User"
+		};
+	}
+
+	namespace CSteamMatchmakingServers
+	{
+		Pattern_t GetServerDetails
+		{
+			"CSteamMatchmakingServers::GetServerDetails",
+			"41 56 41 55 41 54 55 89 F5 53 80 BF 88 01 00 00 00 48 89 FB",
+			SigFollowMode::None
+		};
+		Pattern_t RequestInternetServerList
+		{
+			"CSteamMatchmakingServers::RequestInternetServerList",
+			"55 48 89 E5 41 57 4C 8D 7F 68 41 56 41 55 45 89 C5 41 54 41 89 F4",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CUser
+	{
+		Pattern_t Offset_CompatManager
+		{
+			"CUser::m_CompatManager",
+			"48 8D 83 58 4B 00 00 48 89 DE 48 89 C7 48 89 84 24 F0 00 00 00",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CUser::Offset_CompatManager"
+		};
+
+		Pattern_t CheckAppOwnership
+		{
+			"CUser::CheckAppOwnership",
+			"41 57 41 56 49 89 D6 41 55 41 54 55 53 48 89 FB 48 81 EC B8 00 00 00",
+			SigFollowMode::None
+		};
+
+		Pattern_t GetSubscribedApps
+		{
+			"CUser::GetSubscribedApps",
+			"41 57 41 56 41 55 41 54 55 53 48 83 EC 78 66 0F 6F 05 ? ? ? ?",
+			SigFollowMode::None
+		};
+		Pattern_t PostCallback
+		{
+			"CSteamEngine::PostCallback",
+			"E8 ? ? ? ? 48 81 C3 E8 23 00 00 48 89 DF E8 ? ? ? ? 84 C0",
+			SigFollowMode::Relative,
+			nullptr,
+			"Patterns::CUser::PostCallback"
+		};
+		Pattern_t PostCallbackToAppId
+		{
+			"CUser::PostCallbackToAppId",
+			"41 57 41 89 F7 41 56 41 55 45 89 C5 41 54 49 89 CC 55 89 D5",
+			SigFollowMode::None
+		};
+		Pattern_t UpdateAppOwnershipTicket
+		{
+			"IClientUser::UpdateAppOwnershipTicket",
+			"55 48 89 D5 48 89 CA 53 48 89 FB 48 83 EC 08 E8 ? ? ? ? 48 83 C4 08",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CUser::UpdateAppOwnershipTicket"
+		};
+
+		Pattern_t MarkLicenseAsChanged
+		{
+			"CUser::MarkLicenseAsChanged",
+			"41 57 48 8D 87 ? ? 00 00 41 89 F7 41 56 41 55 41 54 55 53",
+			SigFollowMode::None
+		};
+
+		Pattern_t ProcessPendingLicenseUpdates
+		{
+			"CUser::ProcessPendingLicenseUpdates",
+			"41 54 49 89 FC 55 53 8B 9F C8 24 00 00 83 EB 01 78 66 48 63 C3 48 8D 2C 80 48 C1 E5 04",
+			SigFollowMode::None
+		};
+
+		Pattern_t NotifyLicensesUpdated
+		{
+			"CUser::NotifyLicensesUpdated",
+			"41 57 41 56 41 55 41 54 55 53 48 81 EC 08 02 00 00 44 8B 8F C4 23 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CAppInfoCache
+	{
+		Pattern_t GetOrAddAppData
+		{
+			"CAppInfoCache::GetOrAddAppData",
+			"41 57 41 56 41 55 41 54 49 89 FC 55 89 F5 53 48 83 EC 18 48 8B 05 ? ? ? ?",
+			SigFollowMode::None
+		};
+
+		Pattern_t ThreadedReadFromDisk
+		{
+			"CAppInfoCache::ThreadedReadFromDisk",
+			"55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC 88 11 00 00 48 89 BD 90 EE FF FF",
+			SigFollowMode::None
+		};
+
+		Pattern_t SkipFlagReference
+		{
+			"CAppInfoCache::SkipFlagReference",
+			"0F B6 40 14 74 2D 84 C0 75 18 8B 53 0C 85 D2 74 22 3B 53 34 72 1D",
+			SigFollowMode::None
+		};
+
+		Pattern_t ShaReference
+		{
+			"CAppInfoCache::ShaReference",
+			"48 39 4B 20 74 7B 48 8B 44 24 08 64 48 2B 04 25 28 00 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientAppManager
+	{
+		Pattern_t RunIPCFrame
+		{
+			"IClientAppManager::RunIPCFrame",
+			"55 48 89 E5 41 57 41 56 41 55 41 54 53 48 89 F3 48 8D B5 D8 FC FF FF 48 81 EC 38 03 00 00",
+			SigFollowMode::None
+		};
+		Pattern_t BCanRemotePlayTogether
+		{
+			"IClientAppManager::BCanRemotePlayTogether",
+			"41 55 41 54 49 89 FC 55 89 F5 53 48 83 EC 08 4C 8D 2D ? ? ? ?",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientApps
+	{
+		Pattern_t RunIPCFrame
+		{
+			"IClientApps::RunIPCFrame",
+			"55 48 89 E5 41 57 41 56 49 89 F6 41 55 48 8D B5 F0 FE FF FF 41 54 49 89 FC 4C 89 F7",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientRemoteStorage
+	{
+		Pattern_t RunIPCFrame
+		{
+			"IClientRemoteStorage::RunIPCFrame",
+			"55 48 89 E5 41 57 41 56 41 55 49 89 F5 41 54 48 8D B5 00 FF FF FF 53 48 81 EC 28 01 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientUser
+	{
+		Pattern_t RunIPCFrame
+		{
+			"IClientUser::RunIPCFrame",
+			"55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 49 89 D4 BA 04 00 00 00 53 48 89 F3 48 81 EC 88 01 00 00",
+			SigFollowMode::None
+		};
+
+		Pattern_t BLoggedOn
+		{
+			"IClientUser::BLoggedOn",
+			"8B 47 48 C3 CC CC CC CC CC CC CC CC CC CC CC CC 8B 87 40 06 00 00",
+			SigFollowMode::None
+		};
+		Pattern_t BUpdateAppOwnershipTicket
+		{
+			"IClientUser::BUpdateAppOwnershipTicket",
+			"41 57 41 56 41 55 41 54 4C 8D 67 50 55 48 89 F5 31 F6 53 48 89 FB",
+			SigFollowMode::None
+		};
+		Pattern_t GetAppOwnershipTicketExtendedData
+		{
+			"IClientUser::GetAppOwnershipTicketExtendedData",
+			"41 56 41 55 49 89 D5 41 54 41 89 F4 55 48 89 FD 48 89 CF 53 48 83 EC 10",
+			SigFollowMode::None
+		};
+		Pattern_t IsUserSubscribedAppInTicket
+		{
+			"IClientUser::IsUserSubscribedAppInTicket",
+			"8B 87 1C 26 00 00 85 C0 0F 84 ? ? ? ? 41 57 49 89 FF 41 56 41 89 F6 41 55",
+			SigFollowMode::None
+		};
+		Pattern_t RequiresLegacyCDKey
+		{
+			"IClientUser::RequiresLegacyCDKey",
+			"41 55 49 89 FD 41 54 55 89 F5 53 48 81 EC 48 02 00 00 48 8D 05 ? ? ? ? 64 4C 8B 24 25 28 00 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientUGC
+	{
+		Pattern_t RunIPCFrame
+		{
+			"IClientUGC::RunIPCFrame",
+			"55 48 89 E5 41 57 41 56 49 89 FE 41 55 41 54 49 89 D4 BA 04 00 00 00 53 48 89 F3 48 81 EC 18 01 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientUserStats
+	{
+		Pattern_t RunIPCFrame
+		{
+			"IClientUserStats::RunIPCFrame",
+			"55 48 89 E5 41 57 41 56 41 55 49 89 FD 41 54 53 48 89 F3 48 81 EC D8 00 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CPackageInfoCache
+	{
+		Pattern_t LoadPackage
+		{
+			"CPackageInfoCache::LoadPackage",
+			"41 57 41 56 49 89 F6 41 55 41 54 55 53 48 89 FB 48 81 EC 18 01 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CUtlMemory
+	{
+		Pattern_t Grow
+		{
+			"CUtlMemory::Grow",
+			"E8 ? ? ? ? 8B 45 10 8D 70 01 EB 95 66 0F 1F 44 00 00 29 C6",
+			SigFollowMode::Relative
+		};
+	}
+
+	namespace CDepotDownloadMgr
+	{
+		Pattern_t ProcessDepotManifest
+		{
+			"CDepotDownloadMgr::ProcessDepotManifest",
+			"41 57 41 56 41 89 CE 41 55 41 54 49 89 FC 55 53 4C 89 C3 48 83 EC 38",
+			SigFollowMode::None
+		};
+		Pattern_t PrepareDepotDownload
+		{
+			"CDepotDownloadMgr::PrepareDepotDownload",
+			"41 57 41 56 41 55 41 54 55 53 48 89 FB 48 83 EC 78 48 89 74 24 08",
+			SigFollowMode::None
+		};
+		Pattern_t BuildDepotDependency
+		{
+			"CDepotDownloadMgr::BuildDepotDependency",
+			"41 57 4D 89 CF 41 56 49 89 FE 41 55 41 54 55 53 48 89 D3 48 81 EC 88 02 00 00",
+			SigFollowMode::None
+		};
+		Pattern_t OnChunkUnpackedStack
+		{
+			"CDepotDownloadMgr::OnChunkUnpackedStack",
+			"55 48 89 E5 41 57 41 56 49 89 D6 41 55 41 89 CD 41 54 4D 89 C4",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CDepotDownloadMgr::OnChunkUnpackedStack"
+		};
+		Pattern_t OnChunkUnpackedReg
+		{
+			"CDepotDownloadMgr::OnChunkUnpackedReg",
+			"55 48 89 E5 41 57 41 56 49 89 F6 41 55 49 89 D5 41 54 41 89 CC",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::CDepotDownloadMgr::OnChunkUnpackedReg"
+		};
+		Pattern_t EvaluateConfigChanges
+		{
+			"CDepotDownloadMgr::EvaluateConfigChanges",
+			"55 48 89 E5 41 57 41 56 41 55 41 54 53 48 81 EC 38 01 00 00 89 95 CC FE FF FF",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientFriends
+	{
+		Pattern_t GetFriendGamePlayed
+		{
+			"IClientFriends::GetFriendGamePlayed",
+			"48 89 F0 41 56 48 C1 E8 30 41 55 89 C2 41 54 83 E2 F0 55 80 FA A0",
+			SigFollowMode::None
+		};
+	}
+
+	namespace IClientUtils
+	{
+		Pattern_t RunIPCFrame
+		{
+			"IClientUtils::RunIPCFrame",
+			"55 48 89 E5 41 57 41 56 41 55 41 54 49 89 FC 53 48 89 F3 48 81 EC F8 00 00 00",
+			SigFollowMode::None
+		};
+		Pattern_t Offset_GetPipeIndex
+		{
+			"IClientUtils::m_PipeIndex",
+			"8B B7 D8 EF FF FF 83 F8 FF 74 32 48 8B 8F ? ? 00 00 EB 0D",
+			SigFollowMode::None,
+			nullptr,
+			"Patterns::IClientUtils::Offset_GetPipeIndex"
+		};
+	}
+
+	namespace ISteamMatchmakingPingResponse
+	{
+		Pattern_t ServerResponded
+		{
+			"ISteamMatchmakingPingResponse::ServerResponded",
+			"C7 47 08 FF FF FF FF 0F B7 0E 48 89 F8 48 89 F2 66 89 4F 0C",
+			SigFollowMode::None,
+			&g_modSteamUI
+		};
+	}
+
+	namespace CWebSocketConnection
+	{
+		Pattern_t BBuildAndAsyncSendFrame
+		{
+			"CWebSocketConnection::BBuildAndAsyncSendFrame",
+			"41 57 41 56 41 55 41 89 F5 41 54 49 89 FC 55 53 48 89 D3 48 81 EC C8 00 00 00",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CRemoteClientManager
+	{
+		Pattern_t RecvPkt
+		{
+			"CRemoteClientManager::RecvPkt",
+			"41 54 55 48 89 FD 53 48 83 EC 10 48 8B 05 ? ? ? ? 64 4C 8B 24 25 28 00 00 00 4C 89 64 24 08 49 89 F4 8B 10",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CJobMgr
+	{
+		Pattern_t BRouteMsgToJob
+		{
+			"CJobMgr::BRouteMsgToJob",
+			"55 48 89 E5 41 57 41 56 41 55 49 89 D5 41 54 53 48 81 EC 98 00 00 00 48 89 BD 70 FF FF FF",
+			SigFollowMode::None
+		};
+	}
+
+	namespace CDepotDownloadMgr
+	{
+		Pattern_t BYldRequestDepotManifest
+		{
+			"CDepotDownloadMgr::BYldRequestDepotManifest",
+			"41 57 48 8D 41 FF 41 89 D7 41 56 41 55 41 54 4D 89 C4 55 48 89 CD",
+			SigFollowMode::None
+		};
+	}
+#else
 	// Parental::setup flips the jne at +2.  The failure path pushes a member
 	// for its log line (`push [eax+disp32]`, 0x182 -> 0x166 on the 2026-10
 	// client); it is location-only, so its low bytes are masked.  The jne
@@ -1664,6 +2177,7 @@ namespace Patterns
 			SigFollowMode::None
 		};
 	}
+#endif
 
 	std::vector<Pattern_t*>& patterns()
 	{

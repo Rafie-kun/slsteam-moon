@@ -291,6 +291,13 @@ lm_address_t MemHlp::findPrologue(lm_address_t address, lm_address_t lowerBound,
 
 bool MemHlp::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tramp)
 {
+#if defined(__x86_64__)
+	// x86-64 uses RIP-relative addressing rather than __x86.get_pc_thunk calls.
+	(void)name;
+	(void)fn;
+	(void)tramp;
+	return true;
+#else
 	g_pLog->debug("Fixing PIC thunks for %s's trampoline\n", name);
 	constexpr unsigned int maxBytes = 0x5; //Minimum bytes needed to detour a function, so our tramp will at least be of this size
 	
@@ -386,6 +393,7 @@ bool MemHlp::fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tra
 	}
 
 	return false;
+#endif
 }
 
 

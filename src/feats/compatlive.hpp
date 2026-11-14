@@ -36,16 +36,29 @@ struct StepResult
 inline std::optional<std::size_t> decodeManagerOffset(
 	std::span<const std::uint8_t> instruction) noexcept
 {
-	if (instruction.size() < 6 || instruction[0] != 0x8d ||
-		instruction[1] != 0x8e)
+	std::uint32_t offset = 0;
+	if (instruction.size() >= 7 && instruction[0] == 0x48 &&
+		instruction[1] == 0x8d && instruction[2] == 0x83)
+	{
+		offset =
+			static_cast<std::uint32_t>(instruction[3]) |
+			(static_cast<std::uint32_t>(instruction[4]) << 8) |
+			(static_cast<std::uint32_t>(instruction[5]) << 16) |
+			(static_cast<std::uint32_t>(instruction[6]) << 24);
+	}
+	else if (instruction.size() >= 6 && instruction[0] == 0x8d &&
+		instruction[1] == 0x8e)
+	{
+		offset =
+			static_cast<std::uint32_t>(instruction[2]) |
+			(static_cast<std::uint32_t>(instruction[3]) << 8) |
+			(static_cast<std::uint32_t>(instruction[4]) << 16) |
+			(static_cast<std::uint32_t>(instruction[5]) << 24);
+	}
+	else
 	{
 		return std::nullopt;
 	}
-	const std::uint32_t offset =
-		static_cast<std::uint32_t>(instruction[2]) |
-		(static_cast<std::uint32_t>(instruction[3]) << 8) |
-		(static_cast<std::uint32_t>(instruction[4]) << 16) |
-		(static_cast<std::uint32_t>(instruction[5]) << 24);
 	if (offset == 0 || offset > kMaxManagerOffset)
 		return std::nullopt;
 	return static_cast<std::size_t>(offset);

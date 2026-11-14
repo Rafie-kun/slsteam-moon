@@ -77,6 +77,14 @@ namespace
 	// first instruction (in the relocated tramp -> fixPICThunkCall repairs
 	// it); PrepareDepotDownload's is at +5 (not relocated -> fixPICThunkCall
 	// is a harmless no-op).
+#if defined(__x86_64__)
+	using DepotFn_t = void*(*)(void*, uintptr_t, uint32_t, uint32_t,
+	                           uint64_t, uintptr_t);
+
+	// FUNC_1141 / CDepotDownloadMgr::BuildDepotDependency — 8 args in SysV AMD64.
+	using BuildDepFn_t = void*(*)(void*, uint32_t, void*, uintptr_t,
+	                              uintptr_t, uintptr_t, uintptr_t, uintptr_t);
+#else
 	using DepotFn_t = void*(*)(void*, uint32_t, uint32_t, uint32_t,
 	                           uint64_t, uint32_t);
 
@@ -84,22 +92,29 @@ namespace
 	// consumer.  cdecl, 4 dwords:
 	//   (void* ctx, uint32_t flag, CUtlVector<DepotEntry>* depots, uint32_t a3)
 	using BuildDepFn_t = void*(*)(void*, uint32_t, void*, uint32_t);
+#endif
 
 	// DepotEntry layout (matching OpenSteamTool Structs.h):
 	//   +0x00 u32 DepotId   +0x04 u32 AppId
 	//   +0x08 u64 ManifestGid   +0x10 u64 ManifestSize
 	//   +0x18 u32 DlcAppId   +0x1c u8 Lcs   +0x1d u8 bNotNewTarget
 	//   +0x1e u8 SharedInstall ; stride 0x20.
-	// CUtlVector<DepotEntry>: element base @ +0x00 (memory.base),
-	//   count (size) @ +0x0c.
+	// CUtlVector<DepotEntry>:
+	//   32-bit: base @ +0x00, capacity @ +0x04, count @ +0x0c.
+	//   64-bit: base @ +0x00, capacity @ +0x08, count @ +0x10.
 	constexpr size_t kDepotEntryStride = ManagedDepotFilter::kDepotEntryStride;
 	constexpr size_t kDepotEntryAppIdOff = 0x04;
 	constexpr size_t kDepotEntryGidOff = 0x08;
 	constexpr size_t kDepotEntrySizeOff = ManagedDepotFilter::kDepotSizeOff;
 	constexpr size_t kDepotEntryDlcAppIdOff = 0x18;
 	constexpr size_t kVecBaseOff = 0x00;
+#if defined(__x86_64__)
+	constexpr size_t kVecCapacityOff = 0x08;
+	constexpr size_t kVecCountOff = 0x10;
+#else
 	constexpr size_t kVecCapacityOff = 0x04;
 	constexpr size_t kVecCountOff = 0x0c;
+#endif
 	// Steam invokes BuildDepotDependency in pairs: flag 0 builds the
 	// acquisition target and flag 1 describes the installed side.
 	constexpr uint32_t kTargetPlanFlag = 0;
@@ -649,8 +664,13 @@ namespace
 		    depotId, manifestId, decision.gid, consumeFrozen);
 	}
 
+#if defined(__x86_64__)
+	void* hkProcessDepot(void* ctx, uintptr_t a0C, uint32_t appId,
+	                     uint32_t depotId, uint64_t manifestId, uintptr_t a20)
+#else
 	void* hkProcessDepot(void* ctx, uint32_t a0C, uint32_t appId,
 	                     uint32_t depotId, uint64_t manifestId, uint32_t a20)
+#endif
 	{
 		logPlanStack("leaf", g_traceLeftLeaf, appId, depotId, manifestId);
 		const uint64_t useGid =
@@ -658,8 +678,13 @@ namespace
 		return g_leaf.orig(ctx, a0C, appId, depotId, useGid, a20);
 	}
 
+#if defined(__x86_64__)
+	void* hkPrepareDepot(void* ctx, uintptr_t a0C, uint32_t appId,
+	                     uint32_t depotId, uint64_t manifestId, uintptr_t a20)
+#else
 	void* hkPrepareDepot(void* ctx, uint32_t a0C, uint32_t appId,
 	                     uint32_t depotId, uint64_t manifestId, uint32_t a20)
+#endif
 	{
 		logPlanStack("plan", g_traceLeftPlanner, appId, depotId, manifestId);
 		const uint64_t useGid =
@@ -677,7 +702,12 @@ namespace
 	//
 	// Defensive: bail on an implausible vector (null base / out-of-range count)
 	// so a signature/ABI drift degrades to a harmless pass-through.
+#if defined(__x86_64__)
+	void* hkBuildDepot(void* ctx, uint32_t flag, void* depots, uintptr_t a3,
+	                   uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7)
+#else
 	void* hkBuildDepot(void* ctx, uint32_t flag, void* depots, uint32_t a3)
+#endif
 	{
 		if (depots)
 		{
@@ -848,7 +878,11 @@ namespace
 				    static_cast<void*>(base), count, capacity);
 			}
 		}
+#if defined(__x86_64__)
+		return g_builder.orig(ctx, flag, depots, a3, a4, a5, a6, a7);
+#else
 		return g_builder.orig(ctx, flag, depots, a3);
+#endif
 	}
 
 	// Install one detour; returns false (and leaves the Detour cleared) on

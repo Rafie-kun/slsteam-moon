@@ -31,8 +31,13 @@ namespace
 {
 	using OnChunkStackFn = void(*)(void*, void*, const char*, uint32_t,
 	                               const char*, uint32_t);
+#if defined(__x86_64__)
+	using OnChunkRegFn = void (*)(
+	    void*, void*, const char*, uint32_t, const char*, uint32_t);
+#else
 	using OnChunkRegFn = void (__attribute__((regparm(3))) *)(
 	    void*, void*, const char*, uint32_t, const char*, uint32_t);
+#endif
 
 	template<typename Fn>
 	struct Detour
@@ -278,7 +283,11 @@ namespace
 		g_stack.orig(context, chunk, source, location, detail, unpackResult);
 	}
 
+#if defined(__x86_64__)
+	void hkOnChunkReg(
+#else
 	void __attribute__((regparm(3))) hkOnChunkReg(
+#endif
 	    void* context, void* chunk, const char* source, uint32_t location,
 	    const char* detail, uint32_t unpackResult)
 	{

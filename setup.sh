@@ -615,11 +615,13 @@ guard_has_display() {
 # client is found yet (fresh install): callers then stay conservative.
 guard_client_fp() {
 	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" "$HOME/.local/share/Steam"; do
-		_c="$_r/ubuntu12_32/steamclient.so"
-		if [ -e "$_c" ]; then
-			stat -c '%s:%Y' "$_c" 2>/dev/null || stat -f '%z:%m' "$_c" 2>/dev/null || printf '?'
-			return 0
-		fi
+		for _arch in steamrt64 ubuntu12_32; do
+			_c="$_r/$_arch/steamclient.so"
+			if [ -e "$_c" ]; then
+				stat -c '%s:%Y' "$_c" 2>/dev/null || stat -f '%z:%m' "$_c" 2>/dev/null || printf '?'
+				return 0
+			fi
+		done
 	done
 	printf ''
 }
@@ -770,8 +772,10 @@ slsm_pattern_steam_root() {
 	for _slsm_root in "$HOME/.steam/steam" \
 	                  "$HOME/.steam/debian-installation" \
 	                  "$HOME/.local/share/Steam"; do
-		if [ -f "$_slsm_root/ubuntu12_32/steamclient.so" ] && \
-		   [ -f "$_slsm_root/ubuntu12_32/steamui.so" ]; then
+		if { [ -f "$_slsm_root/steamrt64/steamclient.so" ] && \
+		     [ -f "$_slsm_root/steamrt64/steamui.so" ]; } || \
+		   { [ -f "$_slsm_root/ubuntu12_32/steamclient.so" ] && \
+		     [ -f "$_slsm_root/ubuntu12_32/steamui.so" ]; }; then
 			printf '%s' "$_slsm_root"
 			return 0
 		fi
@@ -816,7 +820,8 @@ slsm_refresh_patterns
 # CloudRedirect's constructor self-removes itself from LD_PRELOAD so child
 # processes (the game, steamwebhelper) don't inherit it.
 CR_SO="$HOME/.local/share/CloudRedirect/cloud_redirect.so"
-if [ -f "$CR_SO" ]; then
+# Skip 32-bit cloud_redirect.so when running 64-bit steamrt64 (ELFCLASS64 = 02).
+if [ -f "$CR_SO" ] && [ "$(od -An -tx1 -j4 -N1 "$CR_SO" 2>/dev/null | tr -d '[:space:]')" = "02" ]; then
 	export LD_PRELOAD="$CR_SO${LD_PRELOAD:+:$LD_PRELOAD}"
 fi
 

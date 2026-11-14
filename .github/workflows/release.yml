@@ -1,0 +1,57 @@
+name: Build and Release slssteam-moon-64
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (without leading v, e.g. 3.0)'
+        required: false
+        default: '3.0'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Determine release version
+        id: meta
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            TAG="${GITHUB_REF_NAME}"
+            VER="${TAG#v}"
+          else
+            VER="${{ inputs.version }}"
+            VER="${VER#v}"
+            TAG="v${VER}"
+          fi
+          echo "version=${VER}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build portable release zip
+        run: |
+          ./scripts/release.sh --version "${{ steps.meta.outputs.version }}"
+
+      - name: Upload zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: slssteam-moon-64-${{ steps.meta.outputs.tag }}
+          path: dist/slsteam-moon-linux-*.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "slssteam-moon-64 ${{ steps.meta.outputs.tag }}"
+          body_path: RELEASE_NOTES.md
+          files: dist/slsteam-moon-linux-*.zip
+          draft: false
+          prerelease: false
+

@@ -154,6 +154,70 @@ int main(int argc, char** argv)
 	const std::string ui = readFile(argv[2]);
 	const std::string source = readFile(argc == 4 ? argv[3] : "src/patterns.cpp");
 
+#if defined(__x86_64__)
+	(void)resolveUnique(
+		client, "CUser::ProcessPendingLicenseUpdates",
+		"41 54 49 89 FC 55 53 8B 9F C8 24 00 00 83 EB 01 78 66 48 63 C3 48 8D 2C 80 48 C1 E5 04",
+		source);
+
+	(void)resolveUnique(
+		client, "CCMInterface::RecvPkt",
+		"41 57 41 56 41 55 41 54 49 89 FC 55 53 48 89 F3 48 81 EC 28 05 00 00 48 8B 2D ? ? ? ? 64 48 8B 04 25 28 00 00 00",
+		source);
+
+	const std::size_t ownership = resolveUnique(
+		ui, "CSteamApp::OwnershipFlagsReference",
+		"41 8B 56 1C 48 8B BD B8 E6 FF FF 48 8D 35 ? ? ? ? E8 ? ? ? ?",
+		source);
+	if (ownership != std::string::npos)
+	{
+		const auto* bytes =
+			reinterpret_cast<const std::uint8_t*>(ui.data()) + ownership;
+		const auto offset = LibraryRemovalPolicy::deriveOwnershipOffset(
+			std::span<const std::uint8_t>(bytes, 4));
+		expect(offset.has_value(),
+		       "CSteamApp::OwnershipFlagsReference: the matched instruction does "
+		       "not decode to a usable ownership-flags offset");
+		if (offset)
+		{
+			std::cout << "CSteamApp::OwnershipFlags offset = 0x" << std::hex
+			          << *offset << std::dec << '\n';
+		}
+	}
+
+	const std::size_t parental = resolveUnique(
+		client, "ParentalSignatureCheck",
+		"84 C0 75 68 8B 95 42 02 00 00 4C 8D A4 24 40 01 00 00 48 8D 35 ? ? ? ?",
+		source);
+	if (parental != std::string::npos)
+	{
+		expect(static_cast<std::uint8_t>(client[parental + 2]) == 0x75,
+		       "ParentalSignatureCheck: the patched byte is not the jne");
+	}
+
+	(void)resolveUnique(
+		client, "CAPIJob::GetPlayerStats",
+		"41 57 31 F6 41 56 41 55 41 54 55 53 48 81 EC 18 02 00 00 64 48 8B 1C 25 28 00 00 00",
+		source);
+
+	const std::size_t compat = resolveUnique(
+		client, "CUser::m_CompatManager",
+		"48 8D 83 58 4B 00 00 48 89 DE 48 89 C7 48 89 84 24 F0 00 00 00",
+		source);
+	if (compat != std::string::npos)
+	{
+		const auto* bytes =
+			reinterpret_cast<const std::uint8_t*>(client.data()) + compat;
+		expect(CompatLive::decodeManagerOffset(
+			       std::span<const std::uint8_t>(bytes, 7)).has_value(),
+		       "CUser::m_CompatManager: the matched LEA does not decode");
+	}
+
+	(void)resolveUnique(
+		client, "CDepotDownloadMgr::BuildDepotDependency",
+		"41 57 4D 89 CF 41 56 49 89 FE 41 55 41 54 55 53 48 89 D3 48 81 EC 88 02 00 00",
+		source);
+#else
 	// The trailing `lea eax,[ebx+disp32]` reaches a data symbol through the PIC
 	// base, so its displacement moves whenever the GOT layout shifts. The hook
 	// only calls the resolved entry, so it stays wildcarded. The two CUser
@@ -256,6 +320,7 @@ int main(int argc, char** argv)
 		"E8 ? ? ? ? 05 ? ? ? ? 55 89 E5 57 56 53 81 EC 3C 04 00 00 8B 5D 08 "
 		"8B 75 14 89 85 ? ? FF FF 8B 45 0C",
 		source);
+#endif
 
 	if (failures != 0)
 	{

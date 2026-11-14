@@ -31,8 +31,12 @@ namespace
 	// pointer regparm(1) keeps EAX intact across the call so the relocated
 	// prologue's `mov %eax,-0xb0(%ebp)` reads the right anchor.  (Prologue is a
 	// plain `push ebp`, not a get_pc_thunk -> no fixPICThunkCall.)
+#if defined(__x86_64__)
+	typedef void* (*ReconFn_t)(void* ctx, void* a1, void* a2);
+#else
 	typedef void* (__attribute__((regparm(1))) *ReconFn_t)(
 	    void* mgr, void* ctx, void* a1, void* a2);
+#endif
 
 	ReconFn_t    g_orig = nullptr;
 	lm_address_t g_addr = LM_ADDRESS_BAD;
@@ -327,8 +331,12 @@ namespace
 		return true;
 	}
 
+#if defined(__x86_64__)
+	void* hkEvaluate(void* ctx, void* a1, void* a2)
+#else
 	__attribute__((regparm(1)))
 	void* hkEvaluate(void* mgr, void* ctx, void* a1, void* a2)
+#endif
 	{
 		if (ctx)
 		{
@@ -346,7 +354,11 @@ namespace
 			}
 			patchTargetCtx(ctx, appId, flags);
 		}
+#if defined(__x86_64__)
+		return g_orig(ctx, a1, a2);
+#else
 		return g_orig(mgr, ctx, a1, a2);
+#endif
 	}
 }
 

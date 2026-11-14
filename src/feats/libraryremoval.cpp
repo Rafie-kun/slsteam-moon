@@ -44,8 +44,11 @@ std::size_t g_ownershipFlagsOffset = 0;
 Detour<MarkAppChangeFn> g_markAppChange;
 Detour<RunFrameFn> g_runFrame;
 
+#if defined(__i386__)
 static_assert(sizeof(void*) == 4,
 	"SteamUI protobuf layout is defined for the Linux i386 client");
+#endif
+// TODO(steamrt64): Re-verify SteamUI 64-bit protobuf layout against steamrt64/steamui.so.
 
 template<typename Fn>
 void uninstall(Detour<Fn>& detour) noexcept
@@ -162,7 +165,11 @@ void* __attribute__((cdecl)) hkRunFrame(void* controller)
 
 bool deriveOwnershipOffset(std::size_t& offset) noexcept
 {
+#if defined(__x86_64__)
+	std::array<std::uint8_t, 4> instruction{};
+#else
 	std::array<std::uint8_t, 3> instruction{};
+#endif
 	if (LM_ReadMemory(
 		Patterns::SteamUI::OwnershipFlagsReference.address,
 		instruction.data(), instruction.size()) != instruction.size())

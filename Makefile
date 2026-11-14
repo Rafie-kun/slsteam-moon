@@ -134,7 +134,7 @@ test-process-runtime:
 test-stats-audit: bin/SLSsteam.so
 	$(CXX) -m64 -std=c++20 -rdynamic tools/test_stats_audit.cpp -ldl -o /tmp/test_stats_audit
 	/tmp/test_stats_audit
-	LD_AUDIT=$(CURDIR)/bin/SLSsteam.so /tmp/test_stats_audit audit
+	LD_AUDIT='$(CURDIR)/bin/SLSsteam.so' /tmp/test_stats_audit audit
 
 all: build
 build: bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh

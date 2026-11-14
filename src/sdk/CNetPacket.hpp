@@ -101,6 +101,7 @@ public:
 	void setBody(CNetPacketBody* value) { fieldSet<CNetPacketBody*>(OFF_BODY, value); }
 	uint32_t sizeBytes() const { return fieldGet<uint32_t>(OFF_SIZE); }
 	void setSize(uint32_t value) { fieldSet<uint32_t>(OFF_SIZE, value); }
+	CNetPacketBody* originalBody() const { return fieldGet<CNetPacketBody*>(OFF_ORIGBODY); }
 	void setOriginalBody(CNetPacketBody* value) { fieldSet<CNetPacketBody*>(OFF_ORIGBODY, value); }
 
 	// Detect the field shift once from a live Steam-owned packet.  Tries the

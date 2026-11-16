@@ -35,6 +35,15 @@ export HOME="$WORK/home"
 export XDG_STATE_HOME="$HOME/.local/state"
 export XDG_CONFIG_HOME="$HOME/.config"
 mkdir -p "$HOME" "$WORK/bin"
+# The wrapper only trusts the user service when it can actually reach it, so the
+# harness needs a session bus socket to exist.
+export XDG_RUNTIME_DIR="$WORK/run"
+mkdir -p "$XDG_RUNTIME_DIR"
+python3 - "$XDG_RUNTIME_DIR/bus" <<'PY'
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.bind(sys.argv[1])
+PY
 SLSDIR="$HOME/.local/share/SLSsteam"
 LUMEN_DIR="$HOME/.local/share/Lumen"
 UNIT="$XDG_CONFIG_HOME/systemd/user/lumen.service"

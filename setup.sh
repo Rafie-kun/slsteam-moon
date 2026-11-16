@@ -865,13 +865,20 @@ LUMEN_DIR="$HOME/.local/share/Lumen"
 # Steam launch, including launchers that never touch this wrapper. When that
 # unit is enabled it owns the sidecar; starting another one from here would just
 # race it to Lumen's own singleton lock.
-lumen_service_owns=0
-if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/lumen.service" ] \
+LUMEN_UNIT="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/lumen.service"
+lumen_owned_by_service=0
+# A session bus is the other half of "systemd can start it": without one, an
+# enabled unit would never come up and the sidecar would simply be missing.
+if [ -f "$LUMEN_UNIT" ] && [ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/bus" ] \
    && command -v systemctl >/dev/null 2>&1 \
    && systemctl --user is-enabled --quiet lumen.service >/dev/null 2>&1; then
-	lumen_service_owns=1
+	lumen_owned_by_service=1
+	# It is normally up already; nudge it if it stopped (it idles out after a
+	# long Steam-free stretch, or gave up after a crash loop).
+	systemctl --user is-active --quiet lumen.service >/dev/null 2>&1 \
+		|| systemctl --user start lumen.service >/dev/null 2>&1 &
 fi
-if [ "$lumen_service_owns" = 0 ] && [ -x "$LUMEN_DIR/lumen" ] \
+if [ "$lumen_owned_by_service" = 0 ] && [ -x "$LUMEN_DIR/lumen" ] \
    && ! pgrep -f "$LUMEN_DIR/lumen" >/dev/null 2>&1; then
 	touch "$HOME/.steam/steam/.cef-enable-remote-debugging" 2>/dev/null || true
 	touch "$HOME/.steam/debian-installation/.cef-enable-remote-debugging" 2>/dev/null || true

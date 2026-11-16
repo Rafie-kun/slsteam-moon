@@ -13,7 +13,7 @@
 
 set -euo pipefail
 
-REPO_SLUG="foodiemonster/slssteam-moon-64"
+REPO_SLUG="Rafie-kun/slsteam-moon"
 ZIP_PATH=""
 REPO_DIR=""
 

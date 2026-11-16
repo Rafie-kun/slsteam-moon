@@ -1,6 +1,8 @@
 # slssteam-moon-64
 
-A 64-bit (`x86_64`) fork of [swwayps/slsteam-moon](https://github.com/swwayps/slsteam-moon) (originally forked from [SLSsteam](https://github.com/AceSLS/SLSsteam)), updated to work natively on newer **`steamrt64`-based** Linux Steam clients with extra protocol handlers, SteamStub support, and a Lua manifest importer.
+64-bit (`x86_64`) build of [swwayps/slsteam-moon](https://github.com/swwayps/slsteam-moon) (itself a fork of [SLSsteam](https://github.com/AceSLS/SLSsteam)) for **`steamrt64`-based** Linux Steam clients, with the extra protocol handlers, SteamStub support and the Lua manifest importer.
+
+The 64-bit port was done by foodiemonster in `slssteam-moon-64`; that repo is gone, so this fork carries the port plus the small fixes needed to get its test targets building again.
 
 ## Installation (with LuaTools)
 
@@ -8,9 +10,8 @@ A 64-bit (`x86_64`) fork of [swwayps/slsteam-moon](https://github.com/swwayps/sl
 2. Install **LuaTools** ([swwayps/luatools-moon](https://github.com/swwayps/luatools-moon)) as normal.
 3. Run the installer script to patch `slssteam-moon-64` on top of your existing setup (this preserves `~/.config/SLSsteam/` and all LuaTools files):
    ```bash
-   curl -fsSL https://raw.githubusercontent.com/foodiemonster/slssteam-moon-64/main/install-over-luatools.sh | bash
+   curl -fsSL https://raw.githubusercontent.com/Rafie-kun/slsteam-moon/slsteam-moon/install-over-luatools.sh | bash
    ```
-   *(If you use the `slsteam-moon` branch directly, replace `/main/` with `/slsteam-moon/`.)*
 4. Launch Steam normally — you should see a **`SLSSteam-moon-64`** notification confirming it loaded.
 
 > **Note:** If LuaTools later overwrites `SLSsteam.so` with a 32-bit build during an update, simply re-run the `curl` command above.
@@ -40,4 +41,4 @@ Reference material:
 
 ## Support
 
-Open an issue: https://github.com/foodiemonster/slssteam-moon-64/issues
+Open an issue: https://github.com/Rafie-kun/slsteam-moon/issues

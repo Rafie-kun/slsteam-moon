@@ -165,7 +165,17 @@ static std::atomic<bool> g_auditDiagnosticsEnabled{false};
 static std::atomic<bool> g_auditPolicyReady{false};
 static std::atomic<bool> g_auditBindAll{true};
 
-static void setup()
+// What asked for setup(): the loader's preinit callback, or steamclient.so/steamui.so being
+// mapped (la_objopen), which is the fallback when preinit was deliberately skipped.
+enum class SetupTrigger { Preinit, ClientModule };
+
+#if defined(__x86_64__)
+// Set by Valve's launcher in the client it re-launches inside the runtime container, absent in
+// the outer `steam` that starts it.
+static constexpr const char* kSteamrtGuardEnv = "STEAM_STEAMRT_RECURSION_GUARD";
+#endif
+
+static void setup(SetupTrigger trigger)
 {
 	lm_process_t proc {};
 	if (!LM_GetProcess(&proc))
@@ -204,6 +214,33 @@ static void setup()
 		unload();
 		return;
 	}
+
+#if defined(__x86_64__)
+	// steamrt64 starts the client twice:
+	//   steam (outer bootstrapper) -> srt-client-container -> ... -> steam (client)
+	// Only the second one maps steamclient.so; the outer one re-launches itself in the
+	// runtime with STEAM_STEAMRT_RECURSION_GUARD set, closes every inherited descriptor and
+	// waits. Running the whole setup() there did duplicate work next to the client's own
+	// (config and appinfo writes, provisioning, a config watcher) and left that watcher
+	// spinning on its closed descriptor. Its LD_AUDIT stays in the environment, so the client
+	// it launches is still audited. Without the variable, la_objopen runs setup() from
+	// steamclient.so instead, so a Valve change to the launcher costs timing, not injection.
+	if (std::getenv(kSteamrtGuardEnv) == nullptr)
+	{
+		if (trigger == SetupTrigger::Preinit)
+		{
+			g_pLog->info("setup: steamrt64 bootstrapper (pid %d, no %s) -> skipped; "
+			             "the client it launches keeps LD_AUDIT\n",
+			             static_cast<int>(getpid()), kSteamrtGuardEnv);
+			return;
+		}
+		g_pLog->warn("setup: steamclient.so mapped in a `steam` process without %s -> "
+		             "running setup from la_objopen\n", kSteamrtGuardEnv);
+	}
+#else
+	(void)trigger;
+#endif
+
 	BootProf::Span setupProfile(g_pLog.get(), "setup");
 
 	// Every auditor namespace gets its own copy of these statics. A secondary
@@ -1147,7 +1184,7 @@ extern "C" unsigned int la_objopen(struct link_map* map,
 	{
 		if (!setupSuccess)
 		{
-			setup();
+			setup(SetupTrigger::ClientModule);
 		}
 		load();
 	}
@@ -1165,5 +1202,5 @@ extern "C" unsigned int la_objopen(struct link_map* map,
 
 extern "C" void la_preinit(__attribute__((unused)) uintptr_t* cookie)
 {
-	setup();
+	setup(SetupTrigger::Preinit);
 }

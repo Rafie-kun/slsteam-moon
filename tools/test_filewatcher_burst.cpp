@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstdio>
+#include <fcntl.h>
 #include <thread>
 #include <unistd.h>
 
@@ -76,12 +77,52 @@ void maximumWindowBoundsContinuousTraffic()
 	CHECK(elapsed >= 80ms && elapsed < 220ms,
 	      "continuous traffic is bounded by the maximum window");
 }
+
+// The steamrt64 bootstrapper closes every inherited descriptor after the config watcher has
+// started. poll() then reports POLLNVAL on every call without waiting; the loop used to treat
+// that as a timeout and spun a core. waitReadable must say Closed, at once, instead.
+void waitReadableTellsClosedFromIdle()
+{
+	using FileWatcherBurst::Wait;
+	using FileWatcherBurst::waitReadable;
+	int p[2]{};
+	CHECK(pipe(p) == 0, "wait fixture pipe created");
+
+	auto start = std::chrono::steady_clock::now();
+	CHECK(waitReadable(p[0], 40) == Wait::Idle, "an open descriptor with nothing to read is Idle");
+	CHECK(std::chrono::steady_clock::now() - start >= 30ms, "Idle waits for the timeout");
+
+	const char c = 'x';
+	CHECK(write(p[1], &c, 1) == 1, "byte queued");
+	CHECK(waitReadable(p[0], 40) == Wait::Readable, "pending data is Readable");
+
+	// A final batch must still be read even if the writer is already gone.
+	close(p[1]);
+	CHECK(waitReadable(p[0], 40) == Wait::Readable, "pending data wins over a hung-up writer");
+	char byte = 0;
+	CHECK(read(p[0], &byte, 1) == 1, "byte consumed");
+
+	start = std::chrono::steady_clock::now();
+	CHECK(waitReadable(p[0], 2000) == Wait::Closed, "a hung-up descriptor with nothing left is Closed");
+	CHECK(std::chrono::steady_clock::now() - start < 500ms, "Closed is reported at once, not after the timeout");
+	close(p[0]);
+
+	const int gone = open("/dev/null", O_RDONLY);
+	CHECK(gone >= 0, "descriptor opened");
+	close(gone);
+	start = std::chrono::steady_clock::now();
+	CHECK(waitReadable(gone, 2000) == Wait::Closed, "a closed descriptor (POLLNVAL) is Closed");
+	CHECK(std::chrono::steady_clock::now() - start < 500ms, "and reported at once");
+	CHECK(waitReadable(-1, 40) == Wait::Idle || waitReadable(-1, 40) == Wait::Closed,
+	      "a negative descriptor is never Readable");
+}
 } // namespace
 
 int main()
 {
 	quietWindowCoalescesOneBurst();
 	maximumWindowBoundsContinuousTraffic();
+	waitReadableTellsClosedFromIdle();
 	if (failures == 0) std::puts("all filewatcher burst checks passed");
 	return failures == 0 ? 0 : 1;
 }

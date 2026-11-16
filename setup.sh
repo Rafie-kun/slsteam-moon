@@ -316,6 +316,16 @@ install_slssteam()
 		cp ./tools/desktop-guardian-units.lib.sh "$SLSDIR/desktop-guardian-units.lib.sh"
 	install -m 0755 ./ensure-desktop-coverage.sh    "$SLSDIR/ensure-desktop-coverage.sh" 2>/dev/null || \
 		{ cp ./ensure-desktop-coverage.sh "$SLSDIR/ensure-desktop-coverage.sh"; chmod +x "$SLSDIR/ensure-desktop-coverage.sh"; }
+	# Payload auto-updater. Runs detached from the wrapper; it only swaps the
+	# three libs above when a newer release exists, so keep it next to them.
+	install -m 0755 ./tools/slsm-autoupdate.sh "$SLSDIR/slsm-autoupdate.sh" 2>/dev/null || \
+		{ cp ./tools/slsm-autoupdate.sh "$SLSDIR/slsm-autoupdate.sh"; chmod +x "$SLSDIR/slsm-autoupdate.sh"; }
+	# Which release this payload came from. The updater only touches an install
+	# it can identify (a hand-built payload has no version file and is left
+	# alone), so a release zip has to carry its own tag.
+	if [ -r ./res/release-version.txt ]; then
+		tr -d '[:space:]' < ./res/release-version.txt > "$SLSDIR/version"
+	fi
 	log_success "Libraries installed at $SLSDIR"
 	echo ""
 }
@@ -851,13 +861,47 @@ fi
 # Lumen injects the LuaTools frontend via CDP and hosts the backend in-process.
 # Single-instance guarded so a second wrapper invocation doesn't stack sidecars.
 LUMEN_DIR="$HOME/.local/share/Lumen"
-if [ -x "$LUMEN_DIR/lumen" ] && ! pgrep -f "$LUMEN_DIR/lumen" >/dev/null 2>&1; then
+# luatools-moon can install a user service that keeps Lumen around for every
+# Steam launch, including launchers that never touch this wrapper. When that
+# unit is enabled it owns the sidecar; starting another one from here would just
+# race it to Lumen's own singleton lock.
+lumen_service_owns=0
+if [ -f "${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user/lumen.service" ] \
+   && command -v systemctl >/dev/null 2>&1 \
+   && systemctl --user is-enabled --quiet lumen.service >/dev/null 2>&1; then
+	lumen_service_owns=1
+fi
+if [ "$lumen_service_owns" = 0 ] && [ -x "$LUMEN_DIR/lumen" ] \
+   && ! pgrep -f "$LUMEN_DIR/lumen" >/dev/null 2>&1; then
 	touch "$HOME/.steam/steam/.cef-enable-remote-debugging" 2>/dev/null || true
 	touch "$HOME/.steam/debian-installation/.cef-enable-remote-debugging" 2>/dev/null || true
+	# The sidecar's output used to go to /dev/null, so a Lumen that failed to
+	# attach left nothing to look at. Keep a small log instead.
+	lumen_log="$LUMEN_DIR/lumen.log"
+	if [ -f "$lumen_log" ] && [ "$(wc -c <"$lumen_log" 2>/dev/null || echo 0)" -gt 1048576 ]; then
+		mv -f "$lumen_log" "$lumen_log.1" 2>/dev/null || true
+	fi
+	printf '\n--- %s: starting Lumen\n' "$(date '+%F %T' 2>/dev/null)" >>"$lumen_log" 2>/dev/null \
+		|| lumen_log=/dev/null
 	env -u LD_AUDIT -u LD_PRELOAD -u LD_LIBRARY_PATH \
 	    LUMEN_BACKEND_DIR="$LUMEN_DIR/luatools/backend" \
 	    LUMEN_LUA_DIR="$LUMEN_DIR/lua" \
-	    setsid "$LUMEN_DIR/lumen" >/dev/null 2>&1 < /dev/null &
+	    setsid "$LUMEN_DIR/lumen" >>"$lumen_log" 2>&1 < /dev/null &
+fi
+
+# Keep the payload in step with our releases. Steam updates move the things
+# SLSsteam finds by pattern matching, and a payload that no longer matches is
+# what makes games stop launching. The updater is throttled, detached and
+# silent: it only swaps files between launches and keeps the old ones in
+# backup/. SLSM_NO_AUTOUPDATE=1 turns it off.
+if [ -x "$SLSDIR/slsm-autoupdate.sh" ] && [ "${SLSM_NO_AUTOUPDATE:-0}" != 1 ]; then
+	if command -v setsid >/dev/null 2>&1; then
+		env -u LD_AUDIT -u LD_PRELOAD -u LD_LIBRARY_PATH \
+		    setsid "$SLSDIR/slsm-autoupdate.sh" >/dev/null 2>&1 < /dev/null &
+	else
+		env -u LD_AUDIT -u LD_PRELOAD -u LD_LIBRARY_PATH \
+		    "$SLSDIR/slsm-autoupdate.sh" >/dev/null 2>&1 < /dev/null &
+	fi
 fi
 
 AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SLSsteam.so"

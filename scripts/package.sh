@@ -122,6 +122,9 @@ cp bin/library-inject.so "$PKG_DIR/bin/"
 cp bin/pattern-refresh   "$PKG_DIR/bin/"
 cp setup.sh              "$PKG_DIR/"
 cp res/config.yaml       "$PKG_DIR/res/"
+# The installer copies this to $SLSDIR/version so the payload auto-updater can
+# tell whether a release tag is actually newer than what is on disk.
+printf '%s\n' "$VERSION" > "$PKG_DIR/res/release-version.txt"
 cp -r docs/LICENSE       "$PKG_DIR/docs/"
 cp -r tools/steamstub-bypass "$PKG_DIR/tools/"
 

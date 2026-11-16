@@ -140,6 +140,8 @@ grep -q 'old SLSsteam' "$SLS/SLSsteam.so" && ok "payload untouched" || bad "payl
 echo "== wrapper and installer wire the updater up"
 grep -q 'slsm-autoupdate.sh' "$REPO_ROOT/setup.sh" \
 	&& ok "setup.sh mentions the updater" || bad "setup.sh does not install it"
+grep -q 'slsm-autoupdate.sh' "$REPO_ROOT/scripts/package.sh" \
+	&& ok "the release zip carries the updater" || bad "package.sh leaves the updater out"
 grep -q 'SLSM_NO_AUTOUPDATE' "$REPO_ROOT/setup.sh" \
 	&& ok "wrapper honours the opt-out" || bad "wrapper ignores the opt-out"
 

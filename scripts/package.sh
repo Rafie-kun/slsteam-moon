@@ -133,6 +133,8 @@ cp -r tools/steamstub-bypass "$PKG_DIR/tools/"
 cp tools/desktop-coverage.lib.sh       "$PKG_DIR/tools/desktop-coverage.lib.sh"
 cp tools/launcher-shim.lib.sh          "$PKG_DIR/tools/launcher-shim.lib.sh"
 cp tools/desktop-guardian-units.lib.sh "$PKG_DIR/tools/desktop-guardian-units.lib.sh"
+# Payload updater; setup.sh installs it next to the libs and the wrapper runs it.
+cp tools/slsm-autoupdate.sh            "$PKG_DIR/tools/slsm-autoupdate.sh"
 cp ensure-desktop-coverage.sh          "$PKG_DIR/ensure-desktop-coverage.sh"
 
 # Strip any build/IDE artefacts that may live alongside steamstub-bypass.

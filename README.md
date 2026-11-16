@@ -94,8 +94,22 @@ upstream 32-bit build, use the upstream repository, or run the installer with
   (the update check, the Update All button, the auto-fix offer) to this repository, so an
   update installs the latest x86_64 release here and never the 32-bit upstream one. If a
   Lumen update changes that text, the installer warns and exits with an error.
-- **Uninstall:** the same upstream `uninstall.sh` as in step 1 removes everything installed
-  here as well.
+- **Uninstall, in one command:**
+
+  ```sh
+  curl -fsSL https://github.com/ogb4n/slsteam-moon-x64/releases/latest/download/uninstall-x86_64.sh | bash
+  ```
+
+  It runs the upstream `uninstall.sh` (which undoes the library, wrapper, `PATH` lines, desktop
+  entries and the system launcher shim, guardian units, Lumen and the LuaTools plugin) and adds
+  what that script does not do: it copies `~/.config/SLSsteam` (config, depot keys) to
+  `~/slsteam-moon-backup-<date>/` first (`SLSM_NO_BACKUP=1` to skip), leaves Millennium alone,
+  removes the root-owned launcher backup that upstream leaves behind (only once `/usr/bin/steam`
+  is back to the original, so the only copy of it is never deleted), then checks the result and
+  exits non-zero, listing what is still there. It stops Steam and asks for your `sudo` password.
+  It keeps your game scripts (`<Steam>/config/stplug-in/`). The upstream script removes
+  `~/.SLSsteam.log` and may leave `~/.lumen.log`. Tested against a stand-in upstream script and a throwaway home; the upstream
+  script itself was run for real on Debian 13 only.
 - **Offline or local zip:** `./install-x86_64.sh --slsteam-zip slsteam-moon-linux-<version>-x86_64.zip`.
 
 Build: [`docs/BUILDING.md`](docs/BUILDING.md). Upstream history is kept; the 32-bit code

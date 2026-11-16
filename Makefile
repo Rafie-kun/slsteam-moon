@@ -105,6 +105,9 @@ test-bootstrapper-x64: bin/SLSsteam.so tools/test_steam_stub.cpp
 test-install-x86_64:
 	bash scripts/test-install-x86_64.sh
 
+test-uninstall-x86_64:
+	bash scripts/test-uninstall-x86_64.sh
+
 test-memhlp-range:
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror -I src -I include \
 		tools/test_memhlp_range.cpp -o /tmp/test_memhlp_range
@@ -224,8 +227,8 @@ test-stats-audit: bin/SLSsteam.so
 # against the current CNetPacket API), test-optional-locators and
 # test-manifestpin-patterns (32-bit client), test-patterns-x86_64 and loadtest-x64
 # (need the real steamrt64 client). Run with `make -k test-ci` to see every failure.
-TEST_CI := test-achievements test-achievement-scope test-addr-plausible test-appinfo-reload test-appinfostate test-appinfo-transaction test-ascii test-atomic-file test-audit-policy test-audit-symbols test-boundedexecutor test-cache-pair test-cef-rewrite-x64 test-clientcompat test-client-layout test-cmclient-live test-cmclient-loader test-cmwire test-config-discovery test-config-path test-contentserverdirectory test-curl-timeout test-depotkey-recv-policy test-depotkey-scope test-detour-x64 test-dlcids test-dlc-metadata test-dlc-scope test-fakeappid-wiring test-familyshare-wiring test-filewatcher-burst test-hotreload-capabilities test-hotreload-inputs test-hotreload-package test-bootstrapper-x64 test-install-x86_64 test-library-inject test-library-dates test-library-dates-hook test-libraryremoval test-manifestdonor test-manifestfetch test-manifest-index test-manifestselection test-manifeststore-io test-manifest-zip test-memhlp-pic test-memhlp-prologue test-memhlp-range test-memhlp-target test-mtvar-contains test-ownerqueue test-pattern-cache test-pattern-catalog test-pattern-refresh test-patternscan test-pending-proton test-pics test-prewarm-backoff test-process-lock test-process-runtime test-provision-cache test-provision-notice test-provision-pass test-provision-refresh test-provision-result test-provision-schedule test-provision-terminal test-reconcilepin-scan test-runtime-dependencies test-stats-audit test-stats-provenance test-steamless-prewarm test-steamstub-launchopt test-steamstub-warmup test-synthmark test-ticket test-utils-sha test-webhelper-audit test-yaml-runtime
-.PHONY: test-ci test-library-inject test-bootstrapper-x64
+TEST_CI := test-achievements test-achievement-scope test-addr-plausible test-appinfo-reload test-appinfostate test-appinfo-transaction test-ascii test-atomic-file test-audit-policy test-audit-symbols test-boundedexecutor test-cache-pair test-cef-rewrite-x64 test-clientcompat test-client-layout test-cmclient-live test-cmclient-loader test-cmwire test-config-discovery test-config-path test-contentserverdirectory test-curl-timeout test-depotkey-recv-policy test-depotkey-scope test-detour-x64 test-dlcids test-dlc-metadata test-dlc-scope test-fakeappid-wiring test-familyshare-wiring test-filewatcher-burst test-hotreload-capabilities test-hotreload-inputs test-hotreload-package test-bootstrapper-x64 test-install-x86_64 test-uninstall-x86_64 test-library-inject test-library-dates test-library-dates-hook test-libraryremoval test-manifestdonor test-manifestfetch test-manifest-index test-manifestselection test-manifeststore-io test-manifest-zip test-memhlp-pic test-memhlp-prologue test-memhlp-range test-memhlp-target test-mtvar-contains test-ownerqueue test-pattern-cache test-pattern-catalog test-pattern-refresh test-patternscan test-pending-proton test-pics test-prewarm-backoff test-process-lock test-process-runtime test-provision-cache test-provision-notice test-provision-pass test-provision-refresh test-provision-result test-provision-schedule test-provision-terminal test-reconcilepin-scan test-runtime-dependencies test-stats-audit test-stats-provenance test-steamless-prewarm test-steamstub-launchopt test-steamstub-warmup test-synthmark test-ticket test-utils-sha test-webhelper-audit test-yaml-runtime
+.PHONY: test-ci test-library-inject test-bootstrapper-x64 test-uninstall-x86_64
 test-ci: $(TEST_CI)
 
 all: build

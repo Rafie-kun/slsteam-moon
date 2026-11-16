@@ -4,6 +4,7 @@
 #include "sdk/steam.hpp"
 #include "api.hpp"
 #include "runtimedir.hpp"
+#include "system_libdirs.hpp"
 #include "audit_log.hpp"
 #include "audit_policy.hpp"
 #include "audit_symbols.hpp"
@@ -444,7 +445,7 @@ static void setup()
 	{
 		const char* cur = getenv("LD_LIBRARY_PATH");
 		std::string ldLibPath = cur ? cur : "";
-		ldLibPath.append(":/usr/lib:/usr/lib32");
+		ldLibPath.append(SystemLibDirs::ldLibraryPathSuffix());
 		setenv("LD_LIBRARY_PATH", ldLibPath.c_str(), true);
 	}
 

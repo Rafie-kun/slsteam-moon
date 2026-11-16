@@ -107,6 +107,20 @@ test-memhlp-range:
 		tools/test_memhlp_range.cpp -o /tmp/test_memhlp_range
 	/tmp/test_memhlp_range
 
+test-library-inject: src/system_libdirs.hpp tools/test_library_inject.cpp bin/library-inject.so
+	$(CXX) $(MARCH) -std=c++20 -Wall -Wextra -Wpedantic -Werror -I src \
+		tools/test_library_inject.cpp -ldl -o /tmp/test_library_inject
+	/tmp/test_library_inject $(CURDIR)/bin/library-inject.so
+	@# End to end through the real dynamic linker: a 64-bit libcurl consumer must still start
+	@# under the auditor. On a multilib machine (e.g. Debian with Steam's :i386 packages) this is
+	@# the issue 5 failure: "wrong ELF class" from a 32-bit libcurl.so.4. Nothing to prove where
+	@# no curl is installed.
+	@if command -v curl >/dev/null 2>&1; then \
+		LD_AUDIT=$(CURDIR)/bin/library-inject.so curl --version >/dev/null \
+			&& echo "curl starts under library-inject.so" \
+			|| { echo "FAIL: curl does not start under library-inject.so"; exit 1; }; \
+	else echo "curl not installed: end-to-end check skipped"; fi
+
 test-detour-x64: src/detour_x64.cpp tools/test_detour_x64.cpp
 	$(CXX) -std=c++20 -Wall -Wextra -Wpedantic -Werror -I src -I include \
 		tools/test_detour_x64.cpp src/detour_x64.cpp $(libdir)/liblibmem.a \
@@ -207,8 +221,8 @@ test-stats-audit: bin/SLSsteam.so
 # against the current CNetPacket API), test-optional-locators and
 # test-manifestpin-patterns (32-bit client), test-patterns-x86_64 and loadtest-x64
 # (need the real steamrt64 client). Run with `make -k test-ci` to see every failure.
-TEST_CI := test-achievements test-achievement-scope test-addr-plausible test-appinfo-reload test-appinfostate test-appinfo-transaction test-ascii test-atomic-file test-audit-policy test-audit-symbols test-boundedexecutor test-cache-pair test-cef-rewrite-x64 test-clientcompat test-client-layout test-cmclient-live test-cmclient-loader test-cmwire test-config-discovery test-config-path test-contentserverdirectory test-curl-timeout test-depotkey-recv-policy test-depotkey-scope test-detour-x64 test-dlcids test-dlc-metadata test-dlc-scope test-fakeappid-wiring test-familyshare-wiring test-filewatcher-burst test-hotreload-capabilities test-hotreload-inputs test-hotreload-package test-install-x86_64 test-library-dates test-library-dates-hook test-libraryremoval test-manifestdonor test-manifestfetch test-manifest-index test-manifestselection test-manifeststore-io test-manifest-zip test-memhlp-pic test-memhlp-prologue test-memhlp-range test-memhlp-target test-mtvar-contains test-ownerqueue test-pattern-cache test-pattern-catalog test-pattern-refresh test-patternscan test-pending-proton test-pics test-prewarm-backoff test-process-lock test-process-runtime test-provision-cache test-provision-notice test-provision-pass test-provision-refresh test-provision-result test-provision-schedule test-provision-terminal test-reconcilepin-scan test-runtime-dependencies test-stats-audit test-stats-provenance test-steamless-prewarm test-steamstub-launchopt test-steamstub-warmup test-synthmark test-ticket test-utils-sha test-webhelper-audit test-yaml-runtime
-.PHONY: test-ci
+TEST_CI := test-achievements test-achievement-scope test-addr-plausible test-appinfo-reload test-appinfostate test-appinfo-transaction test-ascii test-atomic-file test-audit-policy test-audit-symbols test-boundedexecutor test-cache-pair test-cef-rewrite-x64 test-clientcompat test-client-layout test-cmclient-live test-cmclient-loader test-cmwire test-config-discovery test-config-path test-contentserverdirectory test-curl-timeout test-depotkey-recv-policy test-depotkey-scope test-detour-x64 test-dlcids test-dlc-metadata test-dlc-scope test-fakeappid-wiring test-familyshare-wiring test-filewatcher-burst test-hotreload-capabilities test-hotreload-inputs test-hotreload-package test-install-x86_64 test-library-inject test-library-dates test-library-dates-hook test-libraryremoval test-manifestdonor test-manifestfetch test-manifest-index test-manifestselection test-manifeststore-io test-manifest-zip test-memhlp-pic test-memhlp-prologue test-memhlp-range test-memhlp-target test-mtvar-contains test-ownerqueue test-pattern-cache test-pattern-catalog test-pattern-refresh test-patternscan test-pending-proton test-pics test-prewarm-backoff test-process-lock test-process-runtime test-provision-cache test-provision-notice test-provision-pass test-provision-refresh test-provision-result test-provision-schedule test-provision-terminal test-reconcilepin-scan test-runtime-dependencies test-stats-audit test-stats-provenance test-steamless-prewarm test-steamstub-launchopt test-steamstub-warmup test-synthmark test-ticket test-utils-sha test-webhelper-audit test-yaml-runtime
+.PHONY: test-ci test-library-inject
 test-ci: $(TEST_CI)
 
 all: build
@@ -221,9 +235,9 @@ bin/SLSsteam.so: $(objs) $(libs)
 
 # Audit-side helper that redirects libcurl loading to a system copy.
 # Loaded ahead of SLSsteam.so via $LD_AUDIT.
-bin/library-inject.so: tools/library-inject/main.cpp
+bin/library-inject.so: tools/library-inject/main.cpp src/system_libdirs.hpp
 	@mkdir -p bin
-	$(CXX) -O3 $(MARCH) -fPIC -shared -std=c++20 $< -o $@
+	$(CXX) -O3 $(MARCH) -fPIC -shared -std=c++20 -I src $< -o $@
 
 PATTERN_PUBLIC_KEY_HEX = $(shell tr -d '[:space:]' < res/pattern-public-key.hex 2>/dev/null)
 

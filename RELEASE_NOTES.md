@@ -1,35 +1,39 @@
-# slssteam-moon-64 v3.0
+# slsteam-moon-64 v3.0
 
-Native 64-bit (`x86_64` / `ELF64`) port of [swwayps/slsteam-moon](https://github.com/swwayps/slsteam-moon) for **`steamrt64`**-based Linux Steam clients.
+64-bit (`x86_64` / `ELF64`) build of [swwayps/slsteam-moon](https://github.com/swwayps/slsteam-moon) for **`steamrt64`**-based Linux Steam clients.
 
-## Quick Install (on top of LuaTools)
+The port itself was done by foodiemonster in `slssteam-moon-64`; that repo has since been taken down, so this fork carries it. Everything below is their work apart from the build/test fixes listed at the end.
 
-1. Make sure your Steam client is updated to `steamrt64` (not rolled back to `ubuntu12_32`).
-2. Install **LuaTools** as normal.
-3. Run:
-   ```bash
-   curl -fsSL https://raw.githubusercontent.com/foodiemonster/slssteam-moon-64/main/install-over-luatools.sh | bash
-   ```
-   *(Replace `main` with `slsteam-moon` if installing directly from that branch.)*
+## Install
 
-Your existing `~/.config/SLSsteam/` settings, manifests, and LuaTools files are preserved automatically.
+Through LuaTools: use the fork's installer and it picks this release up by itself.
 
-## What's Changed in v3.0
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rafie-kun/luatools-moon/main/install.sh | bash
+```
 
-### Native `steamrt64` (`x86_64`) Support
-- Built `SLSsteam.so`, `library-inject.so`, and `pattern-refresh` as native `ELF64` x86-64 binaries targeting `steamrt64/steamclient.so` and `steamrt64/steamui.so` (tested on Steam build `1794536281`).
-- Added `la_symbind64` auditing support and 64-bit System V AMD64 detour signatures, instruction decoders, and struct layouts (`CNetPacket`, `CUtlVector`, `ManifestBind`, `AppInfoState`, `DepotQuarantine`, `LibraryRemoval`, `CSteamEngine`, `IClientCompat`, `IClientUtils`).
-- Located and verified all 58 64-bit patterns (`steamclient.so` + `steamui.so`), including distinct `IClientUser::RunIPCFrame` and `IClientUserStats::RunIPCFrame` hooks.
+On top of an existing LuaTools / slsteam-moon setup instead:
 
-### SteamRT `pressure-vessel` & Installer Improvements
-- Updated `setup.sh` to detect `steamrt64` clients and skip preloading 32-bit `cloud_redirect.so` on 64-bit Steam.
-- Added direct `libdbus-1.so.3` (`org.freedesktop.Notifications.Notify`) fallback so `SLSSteam-moon-64` desktop notifications work inside SteamRT's `pressure-vessel` container.
-- Fixed false-positive `unzip` missing warnings inside `pressure-vessel` by checking `/run/host/usr/bin` and `/run/host/bin`.
-- Added `install-over-luatools.sh` for one-command installation over existing LuaTools / `slsteam-moon` setups.
+```bash
+curl -fsSL https://raw.githubusercontent.com/Rafie-kun/slsteam-moon/slsteam-moon/install-over-luatools.sh | bash
+```
 
-## Known Limitations
-- **32-bit `ubuntu12_32` Steam**: This release targets `steamrt64` only. Rolled-back 32-bit Steam clients should continue using upstream `swwayps/slsteam-moon`.
-- **`ReconcilePin`**: Logs non-fatal warnings for two unlocated 64-bit offsets (`ctx-vector` and `target-local` fixes disabled).
-- **`cloud_redirect.so`**: Skipped on `steamrt64` while CloudRedirect remains 32-bit.
-- **`pattern-refresh`**: Upstream's signed remote catalog targets 32-bit builds; `slssteam-moon-64` relies on its embedded 64-bit patterns unless a 64-bit catalog is hosted.
+`~/.config/SLSsteam/` (config, manifests, library-added-times) and your LuaTools files are left alone either way.
 
+## What's in v3.0
+
+- `SLSsteam.so`, `library-inject.so` and `pattern-refresh` built as native ELF64 against `steamrt64/steamclient.so` and `steamrt64/steamui.so` (Steam build `1794536281`).
+- `la_symbind64` auditing, 64-bit System V AMD64 detours/decoders and struct layouts (`CNetPacket`, `CUtlVector`, `ManifestBind`, `AppInfoState`, `DepotQuarantine`, `LibraryRemoval`, `CSteamEngine`, `IClientCompat`, `IClientUtils`).
+- The 58 64-bit patterns, including separate `IClientUser::RunIPCFrame` and `IClientUserStats::RunIPCFrame` hooks.
+- `setup.sh` understands `steamrt64` clients, skips the 32-bit `cloud_redirect.so` preload there, and uses a direct `libdbus-1.so.3` fallback for notifications inside `pressure-vessel`.
+- `install-over-luatools.sh` for installing over an existing setup.
+
+On top of the port this fork fixes three test/tooling targets so `make test-*` is green again on 64-bit: `originalBody()` accessor for the packet API, test helpers using the accessor API, and `LD_AUDIT` path quoting in the Makefile.
+
+## Known limitations
+
+- **64-bit clients only.** A 32-bit `ubuntu12_32` client has to stay on upstream `swwayps/slsteam-moon` v2.9.
+- `CServerPipe` offsets are still flagged `TODO(steamrt64)` in the port, so pipe/pid/ticket reads are its shakiest part.
+- `ReconcilePin` logs non-fatal warnings for two unlocated 64-bit offsets (`ctx-vector`, `target-local` fixes disabled).
+- `cloud_redirect.so` is skipped on `steamrt64` while CloudRedirect stays 32-bit.
+- `pattern-refresh`'s signed remote catalog targets 32-bit builds; this build relies on its embedded 64-bit patterns.

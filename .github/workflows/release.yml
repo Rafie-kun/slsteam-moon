@@ -38,20 +38,25 @@ jobs:
       - name: Build portable release zip
         run: |
           ./scripts/release.sh --version "${{ steps.meta.outputs.version }}"
+          ( cd dist && sha256sum slsteam-moon-linux-*.zip > "slsteam-moon-linux-${{ steps.meta.outputs.version }}.zip.sha256" )
 
       - name: Upload zip artifact
         uses: actions/upload-artifact@v4
         with:
           name: slssteam-moon-64-${{ steps.meta.outputs.tag }}
-          path: dist/slsteam-moon-linux-*.zip
+          path: |
+            dist/slsteam-moon-linux-*.zip
+            dist/slsteam-moon-linux-*.zip.sha256
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.meta.outputs.tag }}
-          name: "slssteam-moon-64 ${{ steps.meta.outputs.tag }}"
+          name: "slsteam-moon ${{ steps.meta.outputs.tag }} (64-bit steamrt64)"
           body_path: RELEASE_NOTES.md
-          files: dist/slsteam-moon-linux-*.zip
+          files: |
+            dist/slsteam-moon-linux-*.zip
+            dist/slsteam-moon-linux-*.zip.sha256
           draft: false
           prerelease: false
 

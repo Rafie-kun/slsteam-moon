@@ -79,9 +79,12 @@ char *la_objsearch(const char *name, __attribute__((unused)) uintptr_t *cookie, 
 	return const_cast<char*>(name);
 }
 
-unsigned int la_version(unsigned int)
+unsigned int la_version(unsigned int version)
 {
-	return LAV_CURRENT;
+	//Answer the version the loader offers, capped at ours: a v1 loader refuses
+	//a module answering v2, and some glibc versions abort the process on that.
+	const unsigned int supported = static_cast<unsigned int>(LAV_CURRENT);
+	return version == 0 ? supported : (version < supported ? version : supported);
 }
 
 //void la_preinit(__attribute__((unused)) uintptr_t *cookie)

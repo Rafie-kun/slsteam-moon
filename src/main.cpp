@@ -810,9 +810,15 @@ static void load()
 // threads call them).
 // ───────────────────────────────────────────────────────────────────────
 
-extern "C" unsigned int la_version(unsigned int)
+// The loader passes the audit interface version it implements; answer that,
+// capped at ours.  A loader that only knows v1 refuses a module answering v2,
+// and several glibc versions abort the process on that refusal instead of
+// ignoring the module, which would take the client down on an unsupported host.
+// Every hook this module defines exists in v1.
+extern "C" unsigned int la_version(unsigned int version)
 {
-	return LAV_CURRENT;
+	const unsigned int supported = static_cast<unsigned int>(LAV_CURRENT);
+	return version == 0 ? supported : (version < supported ? version : supported);
 }
 
 // ───────────────────────────────────────────────────────────────────────

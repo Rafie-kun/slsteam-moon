@@ -66,7 +66,7 @@ if [ -n "$SYSTEM_GLIBC" ]; then
 			echo ""
 			echo "Solutions:"
 			echo "  1. Rebuild locally: make clean && make"
-			echo "  2. Use a pre-built release from upstream"
+			echo "  2. Use the portable release build (glibc 2.34 floor)"
 		fi
 	fi
 fi
@@ -89,23 +89,12 @@ echo "Distribution compatibility (for glibc $HIGHEST_GLIBC+):"
 echo ""
 
 case "$HIGHEST_GLIBC" in
-	2.17)
-		echo "  ✅ Ubuntu 14.04+"
-		echo "  ✅ Debian 8+"
-		echo "  ✅ CentOS 7+"
-		echo "  ✅ All modern distros"
+	2.17|2.27|2.31)
+		echo "  ⚠️  Below the project's glibc 2.34 floor"
 		echo ""
-		echo "  🎯 MAXIMUM COMPATIBILITY"
-		;;
-	2.27)
-		echo "  ✅ Ubuntu 18.04+"
-		echo "  ✅ Debian 10+"
-		echo "  ✅ CentOS 8+"
-		;;
-	2.31)
-		echo "  ✅ Ubuntu 20.04+"
-		echo "  ✅ Debian 11+"
-		echo "  ✅ Fedora 32+"
+		echo "  This binary is older than the portable build target, so it is not a"
+		echo "  supported release artifact. scripts/check-sls-abi.sh only rejects the"
+		echo "  other direction (newer than the floor)."
 		;;
 	2.35|2.36)
 		echo "  ✅ Ubuntu 22.04+"
@@ -122,8 +111,8 @@ case "$HIGHEST_GLIBC" in
 		echo ""
 		echo "  ⚠️  LIMITED COMPATIBILITY"
 		echo ""
-		echo "  Consider rebuilding with Docker for better portability:"
-		echo "    ./scripts/build/build-docker.sh"
+		echo "  Consider rebuilding with the portable build for better portability:"
+		echo "    ./scripts/build.sh --portable"
 		;;
 	unknown)
 		echo "  (Cannot determine - objdump not available)"
@@ -133,15 +122,15 @@ esac
 echo ""
 
 # Build recommendation
-if [ "$HIGHEST_GLIBC" != "unknown" ] && [ "$HIGHEST_GLIBC" != "2.17" ]; then
+if [ "$HIGHEST_GLIBC" != "unknown" ] && [ "$HIGHEST_GLIBC" != "2.34" ]; then
 	echo "========================================="
 	echo "  Recommendation"
 	echo "========================================="
 	echo ""
-	echo "For maximum compatibility, rebuild with Docker:"
+	echo "For a release-grade binary, build in the Ubuntu 22.04 container:"
 	echo ""
-	echo "  ./scripts/build/build-docker.sh"
+	echo "  ./scripts/build.sh --portable"
 	echo ""
-	echo "This produces a binary that works on glibc 2.17+ (2012+)"
+	echo "The result is gated to require no GLIBC symbol newer than 2.34."
 	echo ""
 fi

@@ -153,7 +153,7 @@ bin/library-inject.so: tools/library-inject/main.cpp
 PATTERN_PUBLIC_KEY_HEX = $(shell tr -d '[:space:]' < res/pattern-public-key.hex 2>/dev/null)
 
 # Pre-launch metadata refresher. This is a native host executable, not a
-# Steam-loaded i386 object: HTTPS, Ed25519, and cache I/O finish before Steam
+# Steam-loaded object: HTTPS, Ed25519, and cache I/O finish before Steam
 # starts and never run in LD_AUDIT preinit.
 bin/pattern-refresh: tools/pattern-refresh/main.cpp \
                      tools/pattern-refresh/catalog.cpp \
@@ -193,7 +193,7 @@ install:
 
 # Unit test for cmwire.hpp's protobuf-backed helpers (Task 3).  Links the
 # already-compiled protobuf objects + libprotobuf-lite.a, matching the
-# main build's 32-bit + pre-C++11 ABI so the static lib is compatible.
+# main build's x86-64 + pre-C++11 ABI so the static lib is compatible.
 # The pure framing tests (Tasks 1-2) also build standalone without this:
 #   g++ -std=c++20 -I include tools/test_cmwire.cpp -o /tmp/test_cmwire
 test-cmwire: obj/sdk/protobufs/steammessages_base.pb.o \
@@ -519,8 +519,8 @@ test-yaml-runtime:
 		tools/test_yaml_runtime.cpp lib/libyaml-cpp.a -o /tmp/test_yaml_runtime
 	/tmp/test_yaml_runtime
 
-# Non-LTO 32-bit object so the host linker can link the transaction test
-# without choking on LTO bytecode from a different toolchain version.
+# Non-LTO object so the host linker can link the transaction test without
+# choking on LTO bytecode from a different toolchain version.
 obj/feats/appinfo_vdf_test.o: src/feats/appinfo_vdf.cpp $(deps_early)
 	@mkdir -p obj/feats
 	$(CXX) -O2 -fno-lto -fPIC -m64 -std=c++20 -fno-reorder-blocks-and-partition \

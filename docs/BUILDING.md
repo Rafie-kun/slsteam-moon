@@ -200,6 +200,23 @@ sudo usermod -aG docker $USER && newgrp docker
 need an installed, updated Steam client. Point `STEAMCLIENT` and `STEAMUI`
 at the real paths if Steam lives outside `~/.local/share/Steam`.
 
+## Known limitations
+
+- `CServerPipe` (`src/sdk/CSteamEngine.hpp`) still carries its 32-bit field
+  annotations. Only `pid` and `pipeHandle` are read, and `Process_t::init`
+  rejects an implausible pid, but the 64-bit offsets have not been verified
+  against `steamrt64/steamclient.so`. Do not add field reads without checking
+  them against a live client.
+- The SteamUI protobuf layout used by library removal is asserted only for
+  i386; the x86_64 layout is unverified.
+- The `Pattern_t` entries were verified against a `steamrt64` client at the time
+  of the port. Re-run `test-optional-locators` and `test-manifestpin-patterns`
+  after a client update before shipping a release.
+- `res/updates.yaml` lists `steamclient.so` digests for the `ubuntu12_32`
+  client. On x86_64 `SafeMode` cannot match them and fails closed, so it
+  refuses to start Steam; enable it only once the file carries `steamrt64`
+  digests.
+
 ## Build flags
 
 From the Makefile:

@@ -11,16 +11,22 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    # Build in the image the portable release uses, because the glibc gate only
+    # means something with the shipped toolchain. On ubuntu-latest's 2.39
+    # headers the same source pulls __isoc23_strto* and needs GLIBC_2.38, which
+    # no 2.34 floor can accept.
+    container: ubuntu:22.04
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
+      # Before checkout: a bare ubuntu image has no git for the action to use.
       - name: Install build dependencies
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            g++ make pkg-config libssl-dev libcurl4-openssl-dev \
-            zip unzip binutils file
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git g++ make pkg-config libssl-dev \
+            libcurl4-openssl-dev zip unzip binutils file
+
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Build
         run: make -j"$(nproc)"

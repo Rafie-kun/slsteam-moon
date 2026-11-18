@@ -18,14 +18,17 @@
 # ============================================================================
 set -u
 
-REPO="swwayps/slsteam-moon"
+REPO="Rafie-kun/slsteam-moon"
 # Asset name matcher. jq's test() sees the parsed .name (no surrounding quotes),
 # so it uses '.*'; the grep fallback scans raw JSON, so it uses '[^"]*' to avoid
 # crossing a quote. Both use '[.]' for a literal dot (a bare '\.' is not a valid
 # jq string escape and a raw '"' inside a jq "..." string breaks the parse).
-ASSET_RE_JQ='^slsteam-moon-linux-.*-lumen[.]zip$'
-ASSET_RE_GREP='slsteam-moon-linux-[^"]*-lumen[.]zip"'
-MIRROR_MANIFEST="https://cdn.jsdelivr.net/gh/swwayps/jsdelivr@main/manifest.json"
+# This fork publishes slsteam-moon-linux-<ver>.zip; older releases carried a
+# -lumen suffix, so the pattern accepts both. The trailing [.]zip keeps the
+# published .zip.sha256 sidecar out of the match.
+ASSET_RE_JQ='^slsteam-moon-linux-.*[.]zip$'
+ASSET_RE_GREP='slsteam-moon-linux-[^"]*[.]zip"'
+MIRROR_MANIFEST="https://cdn.jsdelivr.net/gh/Rafie-kun/jsdelivr@main/manifest.json"
 SLSDIR="$HOME/.local/share/SLSsteam"
 WRAPPER="$SLSDIR/path/steam"
 
@@ -49,7 +52,7 @@ resolve_github_asset() {
 		printf '%s' "$body" | jq -r \
 			'[.[] | select(.draft==false and .prerelease==false) | .assets[]?
 			  | select(.name|test("'"$ASSET_RE_JQ"'")) | .browser_download_url] | .[0] // empty'
-	elif command -v python3 >/dev/null 2>&1; then
+	elif python3 -c 'pass' >/dev/null 2>&1; then
 		printf '%s' "$body" | python3 -c '
 import json, re, sys
 pattern = re.compile(sys.argv[1])
@@ -74,7 +77,7 @@ resolve_mirror_entry() {
 		printf '%s' "$body" | jq -r \
 			'if .schema == 1 then .components["slsteam-moon"] // {} else {} end
 			 | [.url // "", .sha256 // ""] | @tsv'
-	elif command -v python3 >/dev/null 2>&1; then
+	elif python3 -c 'pass' >/dev/null 2>&1; then
 		printf '%s' "$body" | python3 -c '
 import json, sys
 data = json.load(sys.stdin)
@@ -95,7 +98,7 @@ print("{}\t{}".format(entry.get("url", ""), entry.get("sha256", "")))
 }
 
 valid_mirror_entry() {
-	[[ "$1" =~ ^https://cdn\.jsdelivr\.net/gh/swwayps/jsdelivr@[0-9a-f]{40}/releases/slsteam-moon/.+[.]zip$ ]] \
+	[[ "$1" =~ ^https://cdn\.jsdelivr\.net/gh/Rafie-kun/jsdelivr@[0-9a-f]{40}/releases/slsteam-moon/.+[.]zip$ ]] \
 		&& [[ "$2" =~ ^[0-9a-f]{64}$ ]]
 }
 
@@ -138,13 +141,15 @@ trap 'rm -rf "${TMP:-}"' EXIT
 ZIP="$TMP/slsteam-moon.zip"
 
 info "Downloading"
-if ! curl -fL --connect-timeout 15 --retry 3 --retry-delay 2 "$URL" -o "$ZIP"; then
+if ! curl --fail --location --silent --show-error \
+	--connect-timeout 15 --retry 3 --retry-delay 2 "$URL" -o "$ZIP"; then
 	if [ -z "$MIRROR_URL" ] || [ "$URL" = "$MIRROR_URL" ]; then
 		die "Download failed on GitHub and the jsDelivr mirror."
 	fi
 	warn "GitHub download failed; trying jsDelivr"
 	rm -f "$ZIP"
-	curl -fL --connect-timeout 15 --retry 3 --retry-delay 2 \
+	curl --fail --location --silent --show-error \
+		--connect-timeout 15 --retry 3 --retry-delay 2 \
 		"$MIRROR_URL" -o "$ZIP" || die "Download failed on GitHub and the jsDelivr mirror."
 	URL="$MIRROR_URL"
 	EXPECTED_SHA="$MIRROR_SHA"

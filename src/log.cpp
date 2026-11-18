@@ -196,18 +196,18 @@ void CLog::notifyUser(UserMsg msg, const std::string& detail)
 	}
 
 	const std::string cmd =
-		Notify::buildCommandRaw("SLSSteam-moon-64", shown, timeoutMs, "normal");
+		Notify::buildCommandRaw("SLSSteam-moon-x64", shown, timeoutMs, "normal");
 	// Gamepad UI has no freedesktop notification surface. Hand the same event
 	// to Lumen, which renders it through Steam's own toast system only while
 	// Big Picture/Gamepad UI is active. Desktop keeps notify-send below as the
 	// visible path; the sidecar silently drains the duplicate event there.
-	(void)Notify::enqueueGamepadEventForUser("SLSSteam-moon-64", shown, timeoutMs);
+	(void)Notify::enqueueGamepadEventForUser("SLSSteam-moon-x64", shown, timeoutMs);
 	const int rc = system((cmd + " >/dev/null 2>&1").c_str());
 	if (rc != 0)
 	{
 		// Inside SteamRT pressure-vessel, notify-send is absent; talk to
 		// org.freedesktop.Notifications directly over libdbus-1.so.3.
-		(void)sendDbusNotification("SLSSteam-moon-64", "SLSSteam-moon-64",
+		(void)sendDbusNotification("SLSSteam-moon-x64", "SLSSteam-moon-x64",
 		                           shown.c_str(), timeoutMs);
 	}
 }

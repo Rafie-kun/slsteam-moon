@@ -49,6 +49,7 @@ cat >"$FAKE/bin/curl" <<'EOF'
 url=""
 for arg in "$@"; do url="$arg"; done
 case "$url" in
+	*/repos/fake/port/*) exit 22 ;;
 	*api.github.com*/releases/latest) cat "$FAKE_DIR/release.json" ;;
 	*.zip.sha256) cat "$FAKE_DIR/asset.zip.sha256" ;;
 	*.zip) cat "$FAKE_DIR/asset.zip" ;;
@@ -87,6 +88,17 @@ grep -q 'fake payload' "$SLS/SLSsteam.so" && ok "SLSsteam.so replaced" || bad "S
 ls -d "$SLS"/backup/autoupdate-* >/dev/null 2>&1 && ok "old payload backed up" || bad "no backup"
 grep -q 'payload updated 1.0 -> 9.9' "$WORK"/state*/autoupdate.log 2>/dev/null \
 	&& ok "update logged" || bad "update not logged"
+
+echo "== an unreachable port repo falls back to the fork"
+write_release v9.9
+SLS="$(new_install 1.0)"
+STATE="$WORK/fallback-state"
+env HOME="$WORK/home" SLSDIR="$SLS" SLSM_STATE_DIR="$STATE" \
+    SLSM_AUTOUPDATE_INTERVAL=0 \
+    SLSM_AUTOUPDATE_REPO=fake/port SLSM_AUTOUPDATE_REPO_FALLBACK=fake/fork sh "$UPDATER"
+grep -q 'fake payload' "$SLS/SLSsteam.so" && ok "payload updated from fallback" || bad "fallback did not update"
+grep -q 'no release from fake/port' "$STATE/autoupdate.log" 2>/dev/null \
+	&& ok "fallback logged" || bad "fallback not logged"
 
 echo "== same version does nothing"
 write_release v9.9

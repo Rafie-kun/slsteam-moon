@@ -19,7 +19,9 @@
 #
 # Environment:
 #   SLSM_NO_AUTOUPDATE=1       skip everything
-#   SLSM_AUTOUPDATE_REPO       owner/repo (default Rafie-kun/slsteam-moon)
+#   SLSM_AUTOUPDATE_REPO       owner/repo (default ogb4n/slssteam-moon-x64)
+#   SLSM_AUTOUPDATE_REPO_FALLBACK  owner/repo tried when the first has no
+#                              reachable release (default Rafie-kun/slsteam-moon)
 #   SLSM_AUTOUPDATE_INTERVAL   seconds between checks (default 6h)
 #   SLSM_STATE_DIR             state/log directory (tests)
 #   SLSDIR                     install directory (default ~/.local/share/SLSsteam)
@@ -27,7 +29,8 @@
 set -u
 
 SLSDIR="${SLSDIR:-$HOME/.local/share/SLSsteam}"
-REPO="${SLSM_AUTOUPDATE_REPO:-Rafie-kun/slsteam-moon}"
+REPO="${SLSM_AUTOUPDATE_REPO:-ogb4n/slssteam-moon-x64}"
+REPO_FALLBACK="${SLSM_AUTOUPDATE_REPO_FALLBACK:-Rafie-kun/slsteam-moon}"
 INTERVAL="${SLSM_AUTOUPDATE_INTERVAL:-21600}"
 STATE="${SLSM_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/slsteam-moon}"
 LOG="$STATE/autoupdate.log"
@@ -78,7 +81,15 @@ if [ -z "$installed" ]; then
 fi
 
 command -v curl >/dev/null 2>&1 || exit 0
-json="$(curl -fsSL --max-time 10 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null)" || exit 0
+json="$(curl -fsSL --max-time 10 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null)" || json=""
+if ! printf '%s' "$json" | grep -q '"tag_name"'; then
+	# The x64 port repo can be private or have no release yet; our fork builds
+	# the same payload and always has one.
+	[ -n "$REPO_FALLBACK" ] || exit 0
+	log "no release from $REPO; trying $REPO_FALLBACK"
+	json="$(curl -fsSL --max-time 10 "https://api.github.com/repos/$REPO_FALLBACK/releases/latest" 2>/dev/null)" || exit 0
+	REPO="$REPO_FALLBACK"
+fi
 tag="$(printf '%s' "$json" | sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -n 1)"
 latest="${tag#v}"
 [ -n "$latest" ] || exit 0
@@ -87,7 +98,7 @@ newer "$latest" "$installed" || exit 0
 url="$(printf '%s' "$json" \
 	| grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' \
 	| sed 's/.*"\(https[^"]*\)"$/\1/' \
-	| grep -E '/slsteam-moon-linux-[^/]*\.zip$' \
+	| grep -E '/(slsteam-moon|slssteam-moon-x64)-linux-[^/]*\.zip$' \
 	| head -n 1)"
 [ -n "$url" ] || exit 0
 

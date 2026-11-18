@@ -202,11 +202,22 @@ at the real paths if Steam lives outside `~/.local/share/Steam`.
 
 ## Known limitations
 
-- `CServerPipe` (`src/sdk/CSteamEngine.hpp`) still carries its 32-bit field
-  annotations. Only `pid` and `pipeHandle` are read, and `Process_t::init`
-  rejects an implausible pid, but the 64-bit offsets have not been verified
-  against `steamrt64/steamclient.so`. Do not add field reads without checking
-  them against a live client.
+- `CServerPipe` (`src/sdk/CSteamEngine.hpp`) now carries a real 64-bit layout
+  and asserts it per arch: `pipeHandle` at `0x10`, `pid` at `0x20`, `0x30`
+  total. Those offsets are AceSLS's, reverse engineered against a shipped
+  x86_64 client, and were not measured against the `steamrt64/steamclient.so`
+  this fork ships for, so every reader goes through `plausibleServerPipe()` and
+  a pipe whose pid is out of range is dropped rather than keyed into the
+  process map. Do not add field reads without checking them against a live
+  client.
+- `CNetPacket` (`src/sdk/CNetPacket.hpp`) uses the x86_64 offsets
+  `0x8/0x10/0x18` (size `0x30`) that were verified against the client this fork
+  ports for. The independent `slsteam-moon-64` port measured `0x10/0x18/0x20`
+  (size `0x28`) on steamrt64 `steamclient.so` build `a57ea463`, so the two
+  disagree by one leading field. Nothing here can settle that without the
+  binary in hand; `CNetPacket` validates the body pointer and size at runtime,
+  so a wrong base fails closed instead of dereferencing, but re-check the
+  offsets against the client you ship for before trusting the CM receive path.
 - The SteamUI protobuf layout used by library removal is asserted only for
   i386; the x86_64 layout is unverified.
 - The `Pattern_t` entries were verified against a `steamrt64` client at the time

@@ -461,7 +461,10 @@ static uint32_t hkSteamEngine_ProcessIPCFrame(
 	if (cmd == EIPCCmd::ConnectPipe)
 	{
 		const auto serverPipe = g_pSteamEngine->getServerPipe(hPipe);
-		if (serverPipe)
+		//plausibleServerPipe(): the 64-bit CServerPipe offsets are unverified,
+		//so a wrong layout must fail the pipe registration, not key it off a
+		//mis-read pid.
+		if (plausibleServerPipe(serverPipe))
 		{
 			Process_t process{};
 			if (process.init(serverPipe->pid, serverPipe->pipeHandle))

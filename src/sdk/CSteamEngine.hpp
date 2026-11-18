@@ -13,9 +13,27 @@ class IClientUtils;
 class IProcessPipe { };
 using CUtlString = char*;
 
+// Steam has shipped more than one ABI for this object, and the fork only ever
+// reads two fields (pipeHandle, pid), so the 64-bit layout is kept to the same
+// two fields plus the leading pointers it has to skip.
+//
+// The 64-bit offsets are AceSLS/SLSsteam's (src/sdk/CSteamEngine.hpp, reverse
+// engineered against a shipped x86_64 client).  They were not re-verified
+// against the steamrt64 build this fork ships for, so consumers treat a
+// non-plausible pid as "layout unknown" instead of dereferencing on trust; see
+// plausibleServerPipe().
 class __attribute__((packed)) __attribute__((aligned(1))) CServerPipe
 {
 public:
+#if defined(__x86_64__)
+	IProcessPipe* internalPipe;		//0x0
+	IProcessPipe* singleProcessPipe;	//0x8
+	HSteamPipe pipeHandle;				//0x10
+	uint8_t __pad0x14[0xC];				//0x14
+	int32_t pid;						//0x20
+	int32_t threadId;					//0x24
+	CUtlString processName;				//0x28
+#else
 	IProcessPipe* internalPipe;		//0x0
 	IProcessPipe* singleProcessPipe;	//0x4
 	HSteamPipe pipeHandle;				//0x8
@@ -31,13 +49,29 @@ public:
 	uint32_t numQueuedCallbacks;		//0x38
 	uint8_t __pad0x3C[0x14];			//0x3C
 	CUtlVector<void> debugText;			//0x50
-}; //0x60
+#endif
+}; //0x60 (32-bit) / 0x30 (64-bit)
 
-#if defined(__i386__)
+#if defined(__x86_64__)
+static_assert(offsetof(CServerPipe, pipeHandle) == 0x10);
+static_assert(offsetof(CServerPipe, pid) == 0x20);
+static_assert(sizeof(CServerPipe) == 0x30);
+#else
 static_assert(offsetof(CServerPipe, pipeHandle) == 0x8);
 static_assert(offsetof(CServerPipe, pid) == 0x14);
 #endif
-// TODO(steamrt64): Re-verify CServerPipe 64-bit offsets against steamrt64/steamclient.so.
+
+// A pid outside this range means the 64-bit layout guess is wrong: the 32-bit
+// offsets were measured on a live client, the 64-bit ones were not, and reading
+// the wrong field would key the process map off whatever integer sits at 0x20.
+inline bool plausibleServerPipe(const CServerPipe* const pipe)
+{
+	if (pipe == nullptr)
+	{
+		return false;
+	}
+	return pipe->pid > 0 && pipe->pid < (1 << 22);
+}
 
 class CSteamEngine
 {

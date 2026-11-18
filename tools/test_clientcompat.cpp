@@ -280,6 +280,24 @@ int main(int argc, char** argv)
 	check(!CompatLive::decodeManagerOffset(retired).has_value(),
 	      "the retired pre-2026-10 locator form is rejected");
 
+	// x86-64 passes the same member as a REX.W LEA.  The base and destination
+	// registers are not part of the check, only the displacement.
+	const std::uint8_t locator64[] = {0x48, 0x8d, 0x83, 0x58, 0x4a, 0x00, 0x00};
+	const auto decoded64 = CompatLive::decodeManagerOffset64(locator64);
+	check(decoded64.has_value() && *decoded64 == 0x4a58,
+	      "the x86-64 CUser member locator decodes its displacement");
+	const std::uint8_t locator64Reg[] = {0x48, 0x8d, 0x8b, 0x58, 0x4a, 0x00, 0x00};
+	check(CompatLive::decodeManagerOffset64(locator64Reg).has_value(),
+	      "the x86-64 locator survives a different destination register");
+	const std::uint8_t locator64Neg[] = {0x48, 0x8d, 0x83, 0xd8, 0xef, 0xff, 0xff};
+	check(!CompatLive::decodeManagerOffset64(locator64Neg).has_value(),
+	      "a negative x86-64 member offset is rejected");
+	const std::uint8_t locator64Sib[] = {0x48, 0x8d, 0x84, 0x18, 0x58, 0x4a, 0x00};
+	check(!CompatLive::decodeManagerOffset64(locator64Sib).has_value(),
+	      "an SIB-based x86-64 LEA is rejected");
+	check(CompatLive::decodeManagerOffset(locator64).has_value(),
+	      "the shared decoder routes x86-64 locators through the REX.W form");
+
 	if (argc == 2)
 	{
 		std::ifstream input(argv[1], std::ios::binary);

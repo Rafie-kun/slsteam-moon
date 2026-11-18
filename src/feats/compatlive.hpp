@@ -29,6 +29,36 @@ struct StepResult
 	StepStatus status = StepStatus::Unavailable;
 };
 
+// Decodes the 7-byte x86-64 `lea r64,[base+disp32]` (REX.W 8D mod=10 rm!=100)
+// that CUser::CUser uses to pass its embedded CCompatManager, e.g.
+// `48 8D 83 58 4A 00 00` = `lea rax,[rbx+0x4a58]`.
+//
+// Only the instruction form is checked, not the operands: the base and
+// destination registers follow the constructor's register allocation and
+// neither REX.R nor REX.B moves the displacement, so pinning modrm to 0x83
+// would lose the locator on any client that allocates them differently.
+inline std::optional<std::size_t> decodeManagerOffset64(
+	std::span<const std::uint8_t> instruction) noexcept
+{
+	if (instruction.size() < 7)
+		return std::nullopt;
+	const std::uint8_t rex = instruction[0];
+	if ((rex & 0xFA) != 0x48 || instruction[1] != 0x8D)
+		return std::nullopt;
+	const std::uint8_t modrm = instruction[2];
+	if ((modrm >> 6) != 0b10 || (modrm & 0x7) == 0b100)
+		return std::nullopt;
+	const std::uint32_t raw =
+		static_cast<std::uint32_t>(instruction[3]) |
+		(static_cast<std::uint32_t>(instruction[4]) << 8) |
+		(static_cast<std::uint32_t>(instruction[5]) << 16) |
+		(static_cast<std::uint32_t>(instruction[6]) << 24);
+	const auto disp = static_cast<std::int32_t>(raw);
+	if (disp <= 0 || static_cast<std::size_t>(disp) > kMaxManagerOffset)
+		return std::nullopt;
+	return static_cast<std::size_t>(disp);
+}
+
 // Decodes the `lea ecx,[esi+disp32]` (8D 8E) that the CUser constructor uses
 // to pass its embedded CCompatManager.  Only this form is accepted: the older
 // `lea ebx` (8D 9E) site belongs to clients whose IClientCompat vtable had
@@ -36,17 +66,12 @@ struct StepResult
 inline std::optional<std::size_t> decodeManagerOffset(
 	std::span<const std::uint8_t> instruction) noexcept
 {
-	std::uint32_t offset = 0;
-	if (instruction.size() >= 7 && instruction[0] == 0x48 &&
-		instruction[1] == 0x8d && instruction[2] == 0x83)
+	if (!instruction.empty() && (instruction[0] & 0xF8) == 0x48)
 	{
-		offset =
-			static_cast<std::uint32_t>(instruction[3]) |
-			(static_cast<std::uint32_t>(instruction[4]) << 8) |
-			(static_cast<std::uint32_t>(instruction[5]) << 16) |
-			(static_cast<std::uint32_t>(instruction[6]) << 24);
+		return decodeManagerOffset64(instruction);
 	}
-	else if (instruction.size() >= 6 && instruction[0] == 0x8d &&
+	std::uint32_t offset = 0;
+	if (instruction.size() >= 6 && instruction[0] == 0x8d &&
 		instruction[1] == 0x8e)
 	{
 		offset =

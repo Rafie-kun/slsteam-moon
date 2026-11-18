@@ -800,6 +800,15 @@ bool Process_t::analyse()
 
 bool Process_t::init(const pid_t pid, const HSteamPipe pipeHandle)
 {
+	// The pid comes from CServerPipe, whose 64-bit layout is not verified (see
+	// the note in CSteamEngine.hpp). A misread field must not turn into a /proc
+	// lookup for a bogus process id.
+	if (pid <= 0)
+	{
+		if (g_pLog) g_pLog->warn("Refusing process with invalid pid %ld\n", static_cast<long>(pid));
+		return false;
+	}
+
 	this->pid = pid;
 	this->pipeHandle = pipeHandle;
 

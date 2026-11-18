@@ -238,7 +238,7 @@ lm_address_t MemHlp::getJmpTarget(lm_address_t address)
 	lm_inst_t inst;
 	if (!LM_Disassemble(address, &inst)) //Should not happen if we land in a code section
 	{
-		g_pLog->debug("Failed to disassemble code at %p!");
+		g_pLog->debug("Failed to disassemble code at %p!\n", address);
 		return LM_ADDRESS_BAD;
 	}
 

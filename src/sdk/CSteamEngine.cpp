@@ -2,6 +2,7 @@
 
 #include "IClientCompat.hpp"
 #include "CUtl.hpp"
+#include "disp32.hpp"
 
 #include "../hooks.hpp"
 #include "../patterns.hpp"
@@ -34,11 +35,13 @@ CServerPipe* CSteamEngine::getServerPipe(const HSteamPipe pipe)
 CUser* CSteamEngine::getUser(uint32_t index)
 {
 #if defined(__x86_64__)
-	const static auto offset = *reinterpret_cast<uint32_t*>(Patterns::CSteamEngine::Offset_User.address + 3);
+	const static auto offset = Disp32::read(
+		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_User.address + 3));
 #else
-	const static auto offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_User.address + 0x2);
+	const static auto offset = Disp32::read(
+		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_User.address + 0x2));
 #endif
-	const auto vec = reinterpret_cast<const CUtlVector<CUser*>*>(reinterpret_cast<uintptr_t>(this) + offset);
+	const auto vec = Disp32::at<const CUtlVector<CUser*>>(this, offset);
 	if (!vec->memory.base || index >= vec->size)
 	{
 		return nullptr;
@@ -54,11 +57,13 @@ IClientUtils* CSteamEngine::getUtils()
 		return nullptr;
 	}
 #if defined(__x86_64__)
-	const static lm_address_t offset = *reinterpret_cast<uint32_t*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 3);
+	const static auto offset = Disp32::read(
+		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 3));
 #else
-	const static lm_address_t offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 2);
+	const static auto offset = Disp32::read(
+		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 2));
 #endif
-	return reinterpret_cast<IClientUtils*>(reinterpret_cast<uintptr_t>(this) + offset);
+	return Disp32::at<IClientUtils>(this, offset);
 }
 
 void CSteamEngine::setAppIdForCurrentPipe(uint32_t appId)

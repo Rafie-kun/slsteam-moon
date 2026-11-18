@@ -47,6 +47,7 @@ jobs:
             test-memhlp-target \
             test-memhlp-prologue \
             test-clientcompat \
+            test-disp32 \
             test-dlcids \
             test-pattern-catalog \
             test-pattern-cache \

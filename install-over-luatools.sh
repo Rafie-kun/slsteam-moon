@@ -13,8 +13,11 @@
 
 set -euo pipefail
 
-REPO_SLUG="${SLS_REPO:-ogb4n/slssteam-moon-x64}"
-REPO_FALLBACK="${SLS_REPO_FALLBACK-Rafie-kun/slsteam-moon}"
+# This fork publishes the x64 payload, so it is the default source.
+# ogb4n/slssteam-moon-x64 answers 404; opt in with SLS_REPO_FALLBACK if it
+# becomes reachable again.
+REPO_SLUG="${SLS_REPO:-Rafie-kun/slsteam-moon}"
+REPO_FALLBACK="${SLS_REPO_FALLBACK-}"
 ZIP_PATH=""
 REPO_DIR=""
 
@@ -116,12 +119,20 @@ if [ -z "$INSTALL_ROOT" ]; then
 
 	if [ -z "$ZIP_PATH" ]; then
 		echo "Fetching latest release info from github.com/$REPO_SLUG..."
+		# `releases/latest` already excludes drafts and prereleases. Match the
+		# published payload name so the .zip.sha256 sidecar can never win.
+		fetch_payload_url() {
+			curl --fail --location --silent --show-error --max-time 30 \
+				-H 'Accept: application/vnd.github+json' \
+				"https://api.github.com/repos/$1/releases/latest" 2>/dev/null \
+				| grep -Eo 'https://[^"]+/slsteam-moon-linux-[^"/]+\.zip' | head -n 1
+		}
 		API_URL="https://api.github.com/repos/$REPO_SLUG/releases/latest"
-		DOWNLOAD_URL="$(curl -fsSL "$API_URL" | grep -Eo 'https://[^"]+\.zip' | head -n 1 || true)"
+		DOWNLOAD_URL="$(fetch_payload_url "$REPO_SLUG" || true)"
 		if [ -z "$DOWNLOAD_URL" ] && [ -n "$REPO_FALLBACK" ]; then
 			echo "No release at $API_URL; trying $REPO_FALLBACK..."
 			API_URL="https://api.github.com/repos/$REPO_FALLBACK/releases/latest"
-			DOWNLOAD_URL="$(curl -fsSL "$API_URL" | grep -Eo 'https://[^"]+\.zip' | head -n 1 || true)"
+			DOWNLOAD_URL="$(fetch_payload_url "$REPO_FALLBACK" || true)"
 		fi
 		if [ -z "$DOWNLOAD_URL" ]; then
 			echo "Error: could not find a .zip release asset at $API_URL." >&2
@@ -131,7 +142,8 @@ if [ -z "$INSTALL_ROOT" ]; then
 		fi
 		ZIP_PATH="$TMP_DIR/slssteam-moon-x64.zip"
 		echo "Downloading $DOWNLOAD_URL..."
-		curl -fL "$DOWNLOAD_URL" -o "$ZIP_PATH"
+		curl --fail --location --silent --show-error --max-time 300 \
+			"$DOWNLOAD_URL" -o "$ZIP_PATH"
 	fi
 
 	unzip -q "$ZIP_PATH" -d "$TMP_DIR/extracted"

@@ -19,9 +19,10 @@
 #
 # Environment:
 #   SLSM_NO_AUTOUPDATE=1       skip everything
-#   SLSM_AUTOUPDATE_REPO       owner/repo (default ogb4n/slssteam-moon-x64)
+#   SLSM_AUTOUPDATE_REPO       owner/repo (default Rafie-kun/slsteam-moon)
 #   SLSM_AUTOUPDATE_REPO_FALLBACK  owner/repo tried when the first has no
-#                              reachable release (default Rafie-kun/slsteam-moon)
+#                              reachable release (default: none; set it to
+#                              ogb4n/slssteam-moon-x64 to prefer that port)
 #   SLSM_AUTOUPDATE_INTERVAL   seconds between checks (default 6h)
 #   SLSM_STATE_DIR             state/log directory (tests)
 #   SLSDIR                     install directory (default ~/.local/share/SLSsteam)
@@ -29,8 +30,10 @@
 set -u
 
 SLSDIR="${SLSDIR:-$HOME/.local/share/SLSsteam}"
-REPO="${SLSM_AUTOUPDATE_REPO:-ogb4n/slssteam-moon-x64}"
-REPO_FALLBACK="${SLSM_AUTOUPDATE_REPO_FALLBACK:-Rafie-kun/slsteam-moon}"
+REPO="${SLSM_AUTOUPDATE_REPO:-Rafie-kun/slsteam-moon}"
+# Empty by default: ogb4n/slssteam-moon-x64 answers 404, so probing it on every
+# check only delays the update. Opt in explicitly when it comes back.
+REPO_FALLBACK="${SLSM_AUTOUPDATE_REPO_FALLBACK:-}"
 INTERVAL="${SLSM_AUTOUPDATE_INTERVAL:-21600}"
 STATE="${SLSM_STATE_DIR:-${XDG_STATE_HOME:-$HOME/.local/state}/slsteam-moon}"
 LOG="$STATE/autoupdate.log"
@@ -83,8 +86,8 @@ fi
 command -v curl >/dev/null 2>&1 || exit 0
 json="$(curl -fsSL --max-time 10 "https://api.github.com/repos/$REPO/releases/latest" 2>/dev/null)" || json=""
 if ! printf '%s' "$json" | grep -q '"tag_name"'; then
-	# The x64 port repo can be private or have no release yet; our fork builds
-	# the same payload and always has one.
+	# A second source is opt-in: the default tree always has a release, and a
+	# dead fallback would just cost a request per check.
 	[ -n "$REPO_FALLBACK" ] || exit 0
 	log "no release from $REPO; trying $REPO_FALLBACK"
 	json="$(curl -fsSL --max-time 10 "https://api.github.com/repos/$REPO_FALLBACK/releases/latest" 2>/dev/null)" || exit 0

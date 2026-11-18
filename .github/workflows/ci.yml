@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ make pkg-config libssl-dev libcurl4-openssl-dev \
+            zip unzip binutils file
+
+      - name: Build
+        run: make -j"$(nproc)"
+
+      - name: Check ELF architecture and glibc floor
+        run: |
+          file bin/SLSsteam.so bin/library-inject.so bin/pattern-refresh
+          ./scripts/check-sls-abi.sh bin/SLSsteam.so
+          ./scripts/check-pattern-refresh-abi.sh bin/pattern-refresh
+
+      - name: Checked-in static dependencies are x86-64
+        run: |
+          for archive in lib/*.a; do
+            objdump -f "$archive" | grep -q 'file format elf64-x86-64'
+          done
+
+      - name: Structure and helper tests
+        run: |
+          make \
+            test-ascii \
+            test-audit-symbols \
+            test-audit-policy \
+            test-memhlp-pic \
+            test-memhlp-target \
+            test-memhlp-prologue \
+            test-clientcompat \
+            test-dlcids \
+            test-pattern-catalog \
+            test-pattern-cache \
+            test-utils-sha \
+            test-runtime-dependencies \
+            test-atomic-file \
+            test-cache-pair \
+            test-config-path \
+            test-manifest-index \
+            test-manifestselection \
+            test-boundedexecutor \
+            test-thread-start \
+            test-mtvar-contains \
+            test-reconcilepin-scan \
+            test-patternscan \
+            test-manifest-zip \
+            test-yaml-runtime

@@ -1,29 +1,31 @@
-# slsteam-moon 3.1 (64-bit steamrt64)
+# slsteam-moon 3.2 (64-bit steamrt64)
 
-Same payload as 3.0. This release changes how it is installed and how it stays
-in step with Steam, plus one small Lumen fix.
+The payload is rebuilt against the current Steam client, with the x86_64
+fixes from the port merged in. Most of this release is about refusing the
+wrong architecture instead of failing quietly.
 
-## The payload updates itself
+## Architecture
 
-The Steam wrapper now asks this repo for its latest release at launch — at most
-once every six hours — checks the published sha256, and swaps in
-`SLSsteam.so`, `library-inject.so` and `pattern-refresh` when a newer tag shows
-up. The old files go to `~/.local/share/SLSsteam/backup/autoupdate-<time>/`.
-Nothing else is touched, and anything unexpected (offline, no `unzip`, bad hash,
-an install with no recorded version) leaves the files exactly as they were.
-`SLSM_NO_AUTOUPDATE=1` turns the check off.
+- The wrapper and `setup.sh` read the ELF class of `SLSsteam.so` and the
+  running `steamclient.so`. If they disagree, injection is skipped with one
+  clear line instead of a pile of `wrong ELF class` lines in Steam's log.
+- The installer refuses to drop a payload built for the other client arch
+  over a working install, and the updater applies the same rule to release
+  assets.
+- The 32-bit `cloud_redirect.so` is no longer preloaded into a 64-bit client.
 
-Why bother: a Steam client update moves the code SLSsteam finds by pattern
-matching, so an old payload is what makes games stop launching right after the
-client updates. Waiting for a manual reinstall is what made that a broken day;
-now it is a payload swap between launches.
+## Recovery mode
 
-## Lumen
+- The "paused itself for this session" latch only arms for launches that
+  actually had a display. A scripted or remote launch can no longer put a
+  graphical session into recovery mode.
+- The latch clears when the payload changes, so reinstalling is enough to
+  get out of it.
 
-- Lumen's output goes to `~/.local/share/Lumen/lumen.log` instead of
-  `/dev/null`, so a sidecar that never attached is at least readable.
-- When the luatools-moon Lumen user service owns the sidecar, the wrapper no
-  longer starts a second one.
+## Updates
+
+- Releases are read from this fork first. jsDelivr is the download fallback,
+  and its archive URLs must be commit-pinned.
 
 ## Install
 

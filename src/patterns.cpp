@@ -1339,7 +1339,7 @@ namespace Patterns
 		Pattern_t GetFriendGamePlayed
 		{
 			"IClientFriends::GetFriendGamePlayed",
-			"48 89 F0 41 56 48 C1 E8 30 41 55 89 C2 41 54 83 E2 F0 55 80 FA A0",
+			"48 89 F0 53 48 89 D3 48 C1 E8 30 3C 0F 0F 86 ? ? ? ? 48 89 F2 48 C1 EA 34 83 E2 0F 80 FA 0A 0F 87 ? ? ? ?",
 			SigFollowMode::None
 		};
 	}

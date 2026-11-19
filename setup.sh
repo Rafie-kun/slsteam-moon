@@ -289,6 +289,30 @@ kill_steam() {
 # Install steps
 # ============================================================================
 
+# ELF class of a file: 2 for 64-bit, 1 for 32-bit, empty when it isn't an ELF.
+slsm_elf_class() {
+	[ -f "$1" ] || return 1
+	case "$(od -An -tx1 -j4 -N1 "$1" 2>/dev/null | tr -d '[:space:]')" in
+		01) printf 1 ;;
+		02) printf 2 ;;
+		*) return 1 ;;
+	esac
+}
+
+# The architecture of the client this install will inject into. steamrt64 wins
+# when present; a client rolled back to ubuntu12_32 reports 1.
+slsm_client_class() {
+	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
+	          "$HOME/.local/share/Steam"; do
+		[ -f "$_r/steamrt64/steamclient.so" ] && { printf 2; return 0; }
+	done
+	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
+	          "$HOME/.local/share/Steam"; do
+		[ -f "$_r/ubuntu12_32/steamclient.so" ] && { printf 1; return 0; }
+	done
+	return 1
+}
+
 install_slssteam()
 {
 	LIB="./bin/SLSsteam.so"
@@ -300,6 +324,21 @@ install_slssteam()
 		echo -e "     ${GREEN}./build-docker.sh${NC}  ${MUTED}# For releases (requires Podman/Docker)${NC}"
 		echo -e "     ${GREEN}make${NC}               ${MUTED}# For local testing${NC}"
 		echo ""
+		exit 1
+	fi
+
+	# Installing a payload for the other architecture silently breaks the hook:
+	# ld.so prints "wrong ELF class" and ignores it, so Steam starts with no
+	# plugin (or looks stuck). Refuse instead of leaving that behind.
+	_payload_class="$(slsm_elf_class "$LIB" || true)"
+	_client_class="$(slsm_client_class || true)"
+	if [ -n "$_payload_class" ] && [ -n "$_client_class" ] \
+	   && [ "$_payload_class" != "$_client_class" ]; then
+		if [ "$_payload_class" = 2 ]; then _payload_arch=64-bit; else _payload_arch=32-bit; fi
+		if [ "$_client_class" = 2 ]; then _client_arch=64-bit; else _client_arch=32-bit; fi
+		log_error "This release is ${_payload_arch} but your Steam client is ${_client_arch}."
+		echo "   Refusing to install: the loader would ignore the ${_payload_arch} libraries and Steam would start without SLSsteam."
+		echo "   Install the build that matches your client, or update Steam to steamrt64 first."
 		exit 1
 	fi
 
@@ -893,6 +932,7 @@ if [ "$lumen_owned_by_service" = 0 ] && [ -x "$LUMEN_DIR/lumen" ] \
 	env -u LD_AUDIT -u LD_PRELOAD -u LD_LIBRARY_PATH \
 	    LUMEN_BACKEND_DIR="$LUMEN_DIR/luatools/backend" \
 	    LUMEN_LUA_DIR="$LUMEN_DIR/lua" \
+	    LUMEN_STEAM_GRACE="${LUMEN_STEAM_GRACE:-60}" \
 	    setsid "$LUMEN_DIR/lumen" >>"$lumen_log" 2>&1 < /dev/null &
 fi
 
@@ -913,6 +953,42 @@ fi
 
 AUDIT="$SLSDIR/library-inject.so:$SLSDIR/SLSsteam.so"
 
+# An auditor built for the other architecture cannot load. ld.so prints
+# "wrong ELF class ... ignored" for every process and carries on, so Steam runs
+# without the hook - and with a stale 32-bit payload on a steamrt64 client it
+# looks like the client is stuck. Compare the payload against the client we can
+# see and skip injection when they disagree, rather than attaching something
+# that is going to be dropped anyway.
+slsm_elf_class() {
+	[ -f "$1" ] || return 1
+	_slsm_c="$(od -An -tx1 -j4 -N1 "$1" 2>/dev/null | tr -d '[:space:]')"
+	case "$_slsm_c" in
+		01) printf 1 ;;
+		02) printf 2 ;;
+		*) return 1 ;;
+	esac
+}
+slsm_client_class() {
+	for _slsm_r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
+	                "$HOME/.local/share/Steam"; do
+		[ -f "$_slsm_r/steamrt64/steamclient.so" ] && { printf 2; return 0; }
+	done
+	for _slsm_r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
+	                "$HOME/.local/share/Steam"; do
+		[ -f "$_slsm_r/ubuntu12_32/steamclient.so" ] && { printf 1; return 0; }
+	done
+	return 1
+}
+SLSM_PAYLOAD_CLASS="$(slsm_elf_class "$SLSDIR/SLSsteam.so" 2>/dev/null || true)"
+SLSM_CLIENT_CLASS="$(slsm_client_class 2>/dev/null || true)"
+if [ -n "$SLSM_PAYLOAD_CLASS" ] && [ -n "$SLSM_CLIENT_CLASS" ] \
+   && [ "$SLSM_PAYLOAD_CLASS" != "$SLSM_CLIENT_CLASS" ]; then
+	if [ "$SLSM_PAYLOAD_CLASS" = 2 ]; then _slsm_pw=64-bit; else _slsm_pw=32-bit; fi
+	if [ "$SLSM_CLIENT_CLASS" = 2 ]; then _slsm_cw=64-bit; else _slsm_cw=32-bit; fi
+	printf '%s\n' "slsteam-moon: installed payload is ${_slsm_pw} but the Steam client is ${_slsm_cw}; skipping injection (reinstall to fix)" >&2
+	AUDIT=""
+fi
+
 # Re-assert desktop-entry coverage without putting reconciliation on the launch
 # critical path. Prefer the serialized guardian; retain the legacy CLI fallback
 # during upgrades or on desktops without a working user manager.
@@ -929,10 +1005,14 @@ elif [ -x "$SLSDIR/ensure-desktop-coverage.sh" ]; then
 	fi
 fi
 
-if [ -n "$SLSM_INHERITED_AUDIT" ]; then
-	export LD_AUDIT="$AUDIT:$SLSM_INHERITED_AUDIT"
-else
-	export LD_AUDIT="$AUDIT"
+if [ -n "$AUDIT" ]; then
+	if [ -n "$SLSM_INHERITED_AUDIT" ]; then
+		export LD_AUDIT="$AUDIT:$SLSM_INHERITED_AUDIT"
+	else
+		export LD_AUDIT="$AUDIT"
+	fi
+elif [ -n "$SLSM_INHERITED_AUDIT" ]; then
+	export LD_AUDIT="$SLSM_INHERITED_AUDIT"
 fi
 exec "$STEAM_BIN" "$@"
 EOF

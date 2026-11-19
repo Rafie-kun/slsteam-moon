@@ -128,6 +128,8 @@ grep -q 'old SLSsteam' "$SLS/SLSsteam.so" && ok "payload untouched" || bad "payl
 [ "$(cat "$SLS/version" 2>/dev/null)" = "1.0" ] && ok "version untouched" || bad "version moved"
 grep -q 'sha256 mismatch' "$WORK"/state*/autoupdate.log 2>/dev/null \
 	&& ok "mismatch logged" || bad "mismatch not logged"
+# Restore the good sidecar for the cases below.
+(cd "$FAKE" && sha256sum asset.zip | awk '{print $1 "  asset.zip"}' >asset.zip.sha256)
 
 echo "== opt-out is honoured"
 write_release v9.9
@@ -148,6 +150,20 @@ write_release v1.0
 SLS="$(new_install 9.9)"
 run_updater "$SLS"
 grep -q 'old SLSsteam' "$SLS/SLSsteam.so" && ok "payload untouched" || bad "payload downgraded"
+
+echo "== a payload for the other architecture is refused"
+mkdir -p "$WORK/home/.local/share/Steam/ubuntu12_32"
+printf '\177ELF\001\001\001 fake 32-bit client\n' \
+	>"$WORK/home/.local/share/Steam/ubuntu12_32/steamclient.so"
+write_release v9.9
+SLS="$(new_install 1.0)"
+STATE="$WORK/arch-state"
+env HOME="$WORK/home" SLSDIR="$SLS" SLSM_STATE_DIR="$STATE" \
+    SLSM_AUTOUPDATE_INTERVAL=0 SLSM_AUTOUPDATE_REPO=fake/repo sh "$UPDATER"
+grep -q 'old SLSsteam' "$SLS/SLSsteam.so" && ok "payload untouched" || bad "payload replaced"
+grep -q 'other architecture' "$STATE/autoupdate.log" 2>/dev/null \
+	&& ok "mismatch logged" || bad "mismatch not logged"
+rm -rf "$WORK/home/.local/share/Steam"
 
 echo "== wrapper and installer wire the updater up"
 grep -q 'slsm-autoupdate.sh' "$REPO_ROOT/setup.sh" \

@@ -449,6 +449,28 @@ pattern_elapsed_ms=$(( ($(date +%s%N) - pattern_started) / 1000000 ))
 unset SLSM_TEST_PATTERN_CACHE SLSM_TEST_PATTERN_DELAY PATTERN_ORDER_LOG
 rm -f "$PATTERN_HELPER"
 
+# A payload built for the other architecture cannot be loaded: ld.so prints
+# "wrong ELF class" and ignores it, so the client starts without the hook (and
+# a stale 32-bit payload on a steamrt64 client reads as "Steam won't launch").
+# The wrapper must skip injection instead of attaching it.
+reset_state
+unset LD_AUDIT LD_PRELOAD LD_LIBRARY_PATH
+printf '\177ELF\001\001\001 32-bit payload'  > "$SLSDIR/SLSsteam.so"
+printf '\177ELF\001\001\001 32-bit inject'   > "$SLSDIR/library-inject.so"
+mkdir -p "$HOME_DIR/.steam/steam/steamrt64"
+printf '\177ELF\002\001\001 64-bit client'   > "$HOME_DIR/.steam/steam/steamrt64/steamclient.so"
+: > "$INVOCATIONS"
+sh "$WRAP" >/dev/null 2>"$HOME_DIR/wrapper-arch.log"
+[ -z "$(sed -n 's/^LD_AUDIT=//p' "$ENV_CAPTURE")" ] \
+  && ok "mismatched payload is not attached as an auditor" \
+  || bad "wrapper attached a payload for the other architecture"
+grep -q 'skipping injection' "$HOME_DIR/wrapper-arch.log" \
+  && ok "mismatched payload is reported once" \
+  || bad "wrapper did not explain the skipped payload"
+[ "$(nth 1)" = "vanilla" ] \
+  && ok "Steam still starts with a mismatched payload" \
+  || bad "Steam did not start"
+
 if [ "${SLSM_KEEP_TEST_TMP:-0}" = 1 ]; then
 	echo "test artifacts kept at $HOME_DIR"
 else

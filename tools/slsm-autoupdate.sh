@@ -56,6 +56,30 @@ newer() {
 	}' 2>/dev/null
 }
 
+# ELF class: 2 = 64-bit, 1 = 32-bit. Empty when the file isn't an ELF.
+elf_class() {
+	[ -f "$1" ] || return 1
+	case "$(od -An -tx1 -j4 -N1 "$1" 2>/dev/null | tr -d '[:space:]')" in
+		01) printf 1 ;;
+		02) printf 2 ;;
+		*) return 1 ;;
+	esac
+}
+
+# Architecture of the client we inject into: steamrt64 when present, otherwise
+# a client rolled back to ubuntu12_32.
+client_class() {
+	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
+	          "$HOME/.local/share/Steam"; do
+		[ -f "$_r/steamrt64/steamclient.so" ] && { printf 2; return 0; }
+	done
+	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
+	          "$HOME/.local/share/Steam"; do
+		[ -f "$_r/ubuntu12_32/steamclient.so" ] && { printf 1; return 0; }
+	done
+	return 1
+}
+
 [ "${SLSM_NO_AUTOUPDATE:-0}" = 1 ] && exit 0
 [ -f "$SLSDIR/SLSsteam.so" ] || exit 0
 mkdir -p "$STATE" 2>/dev/null || exit 0
@@ -131,6 +155,17 @@ for f in SLSsteam.so library-inject.so pattern-refresh; do
 done
 # Refuse to install something that is not an ELF shared object / binary.
 [ "$(head -c 4 "$src/bin/SLSsteam.so" | od -An -tx1 | tr -d ' \n')" = "7f454c46" ] || exit 0
+# ... and never swap in a payload the client's loader has to drop. ld.so only
+# warns "wrong ELF class" and carries on, so a mismatched payload looks like
+# Steam starting without the hook.
+payload_class="$(elf_class "$src/bin/SLSsteam.so" || true)"
+client="$(client_class || true)"
+if [ -n "$payload_class" ] && [ -n "$client" ] && [ "$payload_class" != "$client" ]; then
+	if [ "$payload_class" = 2 ]; then arch=64-bit; else arch=32-bit; fi
+	log "$tag is $arch but the Steam client is the other architecture; keeping the current payload"
+	exit 0
+fi
+
 
 backup="$SLSDIR/backup/autoupdate-$(date '+%Y%m%d-%H%M%S')"
 mkdir -p "$backup" 2>/dev/null || exit 0

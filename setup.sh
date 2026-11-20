@@ -1322,17 +1322,21 @@ setup_path_and_desktop()
 	# a minimal launcher. Before Steam bootstrap it must call the distro installer
 	# directly; routing that stub through our wrapper would inject into the
 	# installer and could break the first Steam installation.
-	if [ ! -e "$USER_DESKTOP" ]; then
-		local minimal_exec="$SLSDIR/path/steam"
-		local minimal_tags="$DC_SEED_TAG"
-		if [ "$steam_bootstrapped" != 1 ]; then
-			minimal_exec="$steam_bin"
-			minimal_tags="$DC_SEED_TAG
+	# Fallback: if the user still has no menu entry (no donor anywhere), write
+	# a minimal launcher. Before Steam bootstrap it must call the distro installer
+	# directly; routing that stub through our wrapper would inject into the
+	# installer and could break the first Steam installation.
+	# Always write/update the .desktop file so it reflects the current user's path.
+	local minimal_exec="$SLSDIR/path/steam"
+	local minimal_tags="$DC_SEED_TAG"
+	if [ "$steam_bootstrapped" != 1 ]; then
+		minimal_exec="$steam_bin"
+		minimal_tags="$DC_SEED_TAG
 $DC_PREBOOTSTRAP_TAG"
-			log_info "Steam is not bootstrapped; keeping the minimal launcher vanilla"
-		fi
-		log_info "Writing a minimal Steam launcher"
-		cat > "$USER_DESKTOP" << EOF
+		log_info "Steam is not bootstrapped; keeping the minimal launcher vanilla"
+	fi
+	log_info "Writing Steam desktop entry: $USER_DESKTOP"
+	cat > "$USER_DESKTOP" << EOF
 [Desktop Entry]
 $SLSM_TAG
 $minimal_tags

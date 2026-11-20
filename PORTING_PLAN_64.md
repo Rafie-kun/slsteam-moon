@@ -1,4 +1,4 @@
-# Porting Plan: `slssteam-moon` → `slssteam-moon-x64` (`steamrt64`)
+# Porting Plan: `slssteam-moon` → `slsteam-moon-x64` (`steamrt64`)
 
 ## Goal
 Port `slssteam-moon` from 32-bit `i386` (`ubuntu12_32`) to 64-bit `x86_64` (`steamrt64`) so `SLSsteam.so` and `library-inject.so` natively load into and hook the modern 64-bit Linux Steam client without requiring a client rollback.
@@ -6,7 +6,7 @@ Port `slssteam-moon` from 32-bit `i386` (`ubuntu12_32`) to 64-bit `x86_64` (`ste
 ---
 
 ## Codebase Audit Summary
-Based on inspecting `slssteam-moon-x64`:
+Based on inspecting `slsteam-moon-x64`:
 - **Reusable (~70–80%)**:
   - High-level feature modules in `src/feats/` (AppInfo/VDF, CM/Protobufs, depot keys, manifest management, DLC/ownership/family-share/ticket/achievements, hot-reload, config/logging/curl).
   - Protobuf definitions and generated files in `src/sdk/protobufs/`.
@@ -96,7 +96,7 @@ Break this into incremental, testable milestones:
    - Detect and launch the 64-bit `steamrt64` Steam binary instead of forcing `ubuntu12_32`.
    - Verify `pressure-vessel` / Steam Linux Runtime container env propagation (`LD_AUDIT` / `LD_PRELOAD` and bind mounts if running inside `steamrt64` runtime).
 2. **Packaging & Release (`scripts/package.sh`, `scripts/release.sh`)**:
-   - Package `slssteam-moon-x64-linux-<ver>.zip` with clear version/arch metadata so tools like **SteamRollbackr** and **luatools-moon** can detect `x86_64` vs `i386` builds cleanly.
+   - Package `slsteam-moon-x64-linux-<ver>.zip` with clear version/arch metadata so tools like **SteamRollbackr** and **luatools-moon** can detect `x86_64` vs `i386` builds cleanly.
    - Update `README.md` and `docs/BUILDING.md` with 64-bit build prerequisites.
 
 ---

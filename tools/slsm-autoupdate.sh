@@ -22,7 +22,7 @@
 #   SLSM_AUTOUPDATE_REPO       owner/repo (default Rafie-kun/slsteam-moon)
 #   SLSM_AUTOUPDATE_REPO_FALLBACK  owner/repo tried when the first has no
 #                              reachable release (default: none; set it to
-#                              ogb4n/slssteam-moon-x64 to prefer that port)
+#                              ogb4n/slsteam-moon-x64 to prefer that port)
 #   SLSM_AUTOUPDATE_INTERVAL   seconds between checks (default 6h)
 #   SLSM_STATE_DIR             state/log directory (tests)
 #   SLSDIR                     install directory (default ~/.local/share/SLSsteam)
@@ -31,7 +31,7 @@ set -u
 
 SLSDIR="${SLSDIR:-$HOME/.local/share/SLSsteam}"
 REPO="${SLSM_AUTOUPDATE_REPO:-Rafie-kun/slsteam-moon}"
-# Empty by default: ogb4n/slssteam-moon-x64 answers 404, so probing it on every
+# Empty by default: ogb4n/slsteam-moon-x64 answers 404, so probing it on every
 # check only delays the update. Opt in explicitly when it comes back.
 REPO_FALLBACK="${SLSM_AUTOUPDATE_REPO_FALLBACK:-}"
 INTERVAL="${SLSM_AUTOUPDATE_INTERVAL:-21600}"
@@ -125,7 +125,7 @@ newer "$latest" "$installed" || exit 0
 url="$(printf '%s' "$json" \
 	| grep -o '"browser_download_url"[[:space:]]*:[[:space:]]*"[^"]*"' \
 	| sed 's/.*"\(https[^"]*\)"$/\1/' \
-	| grep -E '/(slsteam-moon|slssteam-moon-x64)-linux-[^/]*\.zip$' \
+	| grep -E '/(slsteam-moon|slsteam-moon-x64)-linux-[^/]*\.zip$' \
 	| head -n 1)"
 [ -n "$url" ] || exit 0
 

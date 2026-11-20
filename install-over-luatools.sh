@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install slssteam-moon-x64 on top of an existing LuaTools / slsteam-moon setup.
+# Install slsteam-moon-x64 on top of an existing LuaTools / slsteam-moon setup.
 #
 # Preserves all existing ~/.config/SLSsteam/ data (config.yaml, manifests,
 # library-added-times.txt) and LuaTools / ACCELA files while upgrading
@@ -14,7 +14,7 @@
 set -euo pipefail
 
 # This fork publishes the x64 payload, so it is the default source.
-# ogb4n/slssteam-moon-x64 answers 404; opt in with SLS_REPO_FALLBACK if it
+# ogb4n/slsteam-moon-x64 answers 404; opt in with SLS_REPO_FALLBACK if it
 # becomes reachable again.
 REPO_SLUG="${SLS_REPO:-Rafie-kun/slsteam-moon}"
 REPO_FALLBACK="${SLS_REPO_FALLBACK-}"
@@ -25,12 +25,12 @@ usage() {
 	cat <<'EOF'
 Usage: install-over-luatools.sh [OPTIONS]
 
-Installs slssteam-moon-x64 on top of an existing LuaTools / slsteam-moon setup,
+Installs slsteam-moon-x64 on top of an existing LuaTools / slsteam-moon setup,
 preserving ~/.config/SLSsteam/ and LuaTools configuration.
 
 Options:
   --zip <path>        Install from a local slsteam-moon-linux-*.zip archive
-  --from-repo <dir>   Install from a built slssteam-moon-x64 repository directory
+  --from-repo <dir>   Install from a built slsteam-moon-x64 repository directory
   -h, --help          Show this help message
 EOF
 }
@@ -69,7 +69,7 @@ done
 
 if [ -z "$STEAM_ROOT" ]; then
 	echo "Error: 64-bit Steam client (steamrt64) was not found." >&2
-	echo "Make sure Steam is updated to steamrt64 (not rolled back to ubuntu12_32) before installing slssteam-moon-x64." >&2
+	echo "Make sure Steam is updated to steamrt64 (not rolled back to ubuntu12_32) before installing slsteam-moon-x64." >&2
 	exit 1
 fi
 echo "Found steamrt64 client at: $STEAM_ROOT"
@@ -137,10 +137,10 @@ if [ -z "$INSTALL_ROOT" ]; then
 		if [ -z "$DOWNLOAD_URL" ]; then
 			echo "Error: could not find a .zip release asset at $API_URL." >&2
 			echo "If no GitHub release is published yet, build locally and run:" >&2
-			echo "  ./install-over-luatools.sh --from-repo /path/to/slssteam-moon-x64" >&2
+			echo "  ./install-over-luatools.sh --from-repo /path/to/slsteam-moon-x64" >&2
 			exit 1
 		fi
-		ZIP_PATH="$TMP_DIR/slssteam-moon-x64.zip"
+		ZIP_PATH="$TMP_DIR/slsteam-moon-x64.zip"
 		echo "Downloading $DOWNLOAD_URL..."
 		curl --fail --location --silent --show-error --max-time 300 \
 			"$DOWNLOAD_URL" -o "$ZIP_PATH"
@@ -166,7 +166,7 @@ if [ "$elf_class" != "02" ]; then
 fi
 
 # 5. Run setup.sh install (preserves ~/.config/SLSsteam/ and LuaTools files)
-echo "Installing slssteam-moon-x64 from $INSTALL_ROOT..."
+echo "Installing slsteam-moon-x64 from $INSTALL_ROOT..."
 (cd "$INSTALL_ROOT" && ./setup.sh install < /dev/null)
 
 # 6. Post-install verification
@@ -177,7 +177,7 @@ if [ "$installed_class" != "02" ]; then
 fi
 
 echo ""
-echo "Done! slssteam-moon-x64 (ELF64) is installed over your existing setup."
+echo "Done! slsteam-moon-x64 (ELF64) is installed over your existing setup."
 echo "Preserved config: $HOME/.config/SLSsteam/"
 echo "Note: If LuaTools updates/overwrites SLSsteam back to 32-bit in the future, re-run this script."
 

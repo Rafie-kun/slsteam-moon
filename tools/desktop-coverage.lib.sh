@@ -590,6 +590,14 @@ dc_patch_one() {
 	tmp="$(mktemp)" || return 1
 	cat "$f" > "$tmp" 2>/dev/null
 	dc_strip_preheader "$tmp"
+	# Only Steam launchers (steam, bazzite-steam, steam-jupiter) are ours to
+	# manage. Game shortcuts from other profiles (e.g. careca-x64) carry our
+	# tag from a previous install but point at a different binary; leave them
+	# alone instead of failing the reconciliation.
+	if ! _dc_exec_scan supported "$(_dc_primary_exec_text "$tmp")" >/dev/null 2>&1; then
+		rm -f "$tmp"
+		return 0
+	fi
 	if [ "$kind" = stub ] && ! dc_rewrite_installed_stub_exec "$tmp"; then
 		rm -f "$tmp"
 		return 1
@@ -1022,6 +1030,12 @@ dc_guardian_fingerprint() {
 dc_guardian_patch_file() {
 	local f="$1" before after
 	[ -f "$f" ] || return 1
+	# Only Steam launchers (steam, bazzite-steam, steam-jupiter) are ours to
+	# manage. Game shortcuts from other profiles carry our tag from a previous
+	# install but point at a different binary; skip them instead of failing.
+	if ! _dc_exec_scan supported "$(_dc_primary_exec_text "$f")" >/dev/null 2>&1; then
+		return 1
+	fi
 	before="$(dc_guardian_fingerprint "$f")"
 	dc_patch_one "$f" || return 2
 	_dc_file_has_primary_wrapper_exec "$f" || return 2

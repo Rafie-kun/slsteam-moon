@@ -972,11 +972,32 @@ slsm_elf_class() {
 	esac
 }
 slsm_client_class() {
-	# Check the ELF class of the actual steam binary being launched, not just
-	# which steamrt directory happens to exist on disk. Both steamrt64 and
-	# steamrt32 may be installed, but only one is actually used by the client.
+	# Check the ELF class of the actual steam binary being launched.
+	# Both steamrt64 and steamrt32 may be installed on disk, but Steam may
+	# re-exec from steamrt64/steam into steamrt3/steam (seen on CachyOS and
+	# other mixed-arch systems). If the 32-bit client exists and might be
+	# used, report 32-bit so we never inject a 64-bit payload into a 32-bit
+	# process (ld.so would reject it with "wrong ELF class").
 	if [ -n "${STEAM_BIN:-}" ] && [ -x "$STEAM_BIN" ]; then
-		slsm_elf_class "$STEAM_BIN" && return 0
+		_slsm_c="$(slsm_elf_class "$STEAM_BIN" 2>/dev/null || true)"
+		if [ "$_slsm_c" = 1 ]; then
+			printf 1
+			return 0
+		fi
+	fi
+	# If the 32-bit client exists on disk, Steam may re-exec into it.
+	# Refuse 64-bit injection to avoid the "wrong ELF class" crash.
+	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
+	          "$HOME/.local/share/Steam"; do
+		if [ -x "$_r/steamrt3/steam" ] && \
+		   [ "$(slsm_elf_class "$_r/steamrt3/steam" 2>/dev/null || true)" = 1 ]; then
+			printf 1
+			return 0
+		fi
+	done
+	# Only steamrt64 exists and is 64-bit.
+	if [ -n "${STEAM_BIN:-}" ] && [ -x "$STEAM_BIN" ]; then
+		slsm_elf_class "$STEAM_BIN" 2>/dev/null && return 0
 	fi
 	return 1
 }

@@ -301,16 +301,16 @@ slsm_elf_class() {
 
 # The architecture of the client this install will inject into.
 # Steam on CachyOS and similar distros launches steamrt64/steam (64-bit)
-# which then re-execs into steamrt3/steam (32-bit client). We must check
+# which then re-execs into steamrt32/steam (32-bit client). We must check
 # the actual client binary that will run, not just the launcher script.
 # Returns 2 for 64-bit, 1 for 32-bit, or nothing if undetermined.
 slsm_client_class() {
 	# Check steamrt3 first: if the 32-bit client exists, Steam will run it
 	# (even if the launcher points at steamrt64/steam). Injecting a 64-bit
 	# payload into a 32-bit client fails with "wrong ELF class".
-	for c in "$HOME/.local/share/Steam/steamrt3/steam" \
-	         "$HOME/.steam/steam/steamrt3/steam" \
-	         "${HOME}/.steam/debian-installation/steamrt3/steam"; do
+	for c in "$HOME/.local/share/Steam/steamrt32/steam" \
+	         "$HOME/.steam/steam/steamrt32/steam" \
+	         "${HOME}/.steam/debian-installation/steamrt32/steam"; do
 		if [ -x "$c" ] && slsm_elf_class "$c" | grep -qx 1; then
 			printf 1
 			return 0
@@ -996,7 +996,7 @@ slsm_elf_class() {
 slsm_client_class() {
 	# Check the ELF class of the actual steam binary being launched.
 	# Both steamrt64 and steamrt32 may be installed on disk, but Steam may
-	# re-exec from steamrt64/steam into steamrt3/steam (seen on CachyOS and
+	# re-exec from steamrt64/steam into steamrt32/steam (seen on CachyOS and
 	# other mixed-arch systems). If the 32-bit client exists and might be
 	# used, report 32-bit so we never inject a 64-bit payload into a 32-bit
 	# process (ld.so would reject it with "wrong ELF class").
@@ -1011,8 +1011,8 @@ slsm_client_class() {
 	# Refuse 64-bit injection to avoid the "wrong ELF class" crash.
 	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
 	          "$HOME/.local/share/Steam"; do
-		if [ -x "$_r/steamrt3/steam" ] && \
-		   [ "$(slsm_elf_class "$_r/steamrt3/steam" 2>/dev/null || true)" = 1 ]; then
+		if [ -x "$_r/steamrt32/steam" ] && \
+		   [ "$(slsm_elf_class "$_r/steamrt32/steam" 2>/dev/null || true)" = 1 ]; then
 			printf 1
 			return 0
 		fi

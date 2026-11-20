@@ -299,12 +299,34 @@ slsm_elf_class() {
 	esac
 }
 
-# The architecture of the client this install will inject into. steamrt64 wins
-# when present; a client rolled back to ubuntu12_32 reports 1.
+# The architecture of the client this install will inject into.
+# Steam on CachyOS and similar distros launches steamrt64/steam (64-bit)
+# which then re-execs into steamrt3/steam (32-bit client). We must check
+# the actual client binary that will run, not just the launcher script.
+# Returns 2 for 64-bit, 1 for 32-bit, or nothing if undetermined.
 slsm_client_class() {
-	# Check the ELF class of the actual steam binary being launched.
-	# Both steamrt64 and steamrt32 may be installed on disk, but only one
-	# is used by the client process.
+	# Check steamrt3 first: if the 32-bit client exists, Steam will run it
+	# (even if the launcher points at steamrt64/steam). Injecting a 64-bit
+	# payload into a 32-bit client fails with "wrong ELF class".
+	for c in "$HOME/.local/share/Steam/steamrt3/steam" \
+	         "$HOME/.steam/steam/steamrt3/steam" \
+	         "${HOME}/.steam/debian-installation/steamrt3/steam"; do
+		if [ -x "$c" ] && slsm_elf_class "$c" | grep -qx 1; then
+			printf 1
+			return 0
+		fi
+	done
+	# Check steamrt64: if only the 64-bit client exists, report 64-bit.
+	for c in "$HOME/.local/share/Steam/steamrt64/steam" \
+	         "$HOME/.steam/steam/steamrt64/steam" \
+	         "${HOME}/.steam/debian-installation/steamrt64/steam"; do
+		if [ -x "$c" ] && slsm_elf_class "$c" | grep -qx 2; then
+			printf 2
+			return 0
+		fi
+	done
+	# Fall back to checking launcher scripts (not ELF binaries, but
+	# sometimes the only thing available).
 	for c in /usr/games/steam /usr/bin/steam /usr/local/bin/steam \
 	         "${HOME}/.local/share/Steam/steam.sh" \
 	         "${HOME}/.steam/steam/steam.sh" \

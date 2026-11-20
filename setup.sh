@@ -1016,6 +1016,12 @@ slsm_client_class() {
 			printf 1
 			return 0
 		fi
+		# Some distros (CachyOS, Arch) use ubuntu12_32/steam instead
+		if [ -x "$_r/ubuntu12_32/steam" ] && \
+		   [ "$(slsm_elf_class "$_r/ubuntu12_32/steam" 2>/dev/null || true)" = 1 ]; then
+			printf 1
+			return 0
+		fi
 	done
 	# Only steamrt64 exists and is 64-bit.
 	if [ -n "${STEAM_BIN:-}" ] && [ -x "$STEAM_BIN" ]; then

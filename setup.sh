@@ -302,13 +302,16 @@ slsm_elf_class() {
 # The architecture of the client this install will inject into. steamrt64 wins
 # when present; a client rolled back to ubuntu12_32 reports 1.
 slsm_client_class() {
-	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
-	          "$HOME/.local/share/Steam"; do
-		[ -f "$_r/steamrt64/steamclient.so" ] && { printf 2; return 0; }
-	done
-	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
-	          "$HOME/.local/share/Steam"; do
-		[ -f "$_r/ubuntu12_32/steamclient.so" ] && { printf 1; return 0; }
+	# Check the ELF class of the actual steam binary being launched.
+	# Both steamrt64 and steamrt32 may be installed on disk, but only one
+	# is used by the client process.
+	for c in /usr/games/steam /usr/bin/steam /usr/local/bin/steam \
+	         "${HOME}/.local/share/Steam/steam.sh" \
+	         "${HOME}/.steam/steam/steam.sh" \
+	         "${HOME}/.steam/debian-installation/steam.sh"; do
+		if [ -x "$c" ]; then
+			slsm_elf_class "$c" && return 0
+		fi
 	done
 	return 1
 }
@@ -969,14 +972,12 @@ slsm_elf_class() {
 	esac
 }
 slsm_client_class() {
-	for _slsm_r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
-	                "$HOME/.local/share/Steam"; do
-		[ -f "$_slsm_r/steamrt64/steamclient.so" ] && { printf 2; return 0; }
-	done
-	for _slsm_r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" \
-	                "$HOME/.local/share/Steam"; do
-		[ -f "$_slsm_r/ubuntu12_32/steamclient.so" ] && { printf 1; return 0; }
-	done
+	# Check the ELF class of the actual steam binary being launched, not just
+	# which steamrt directory happens to exist on disk. Both steamrt64 and
+	# steamrt32 may be installed, but only one is actually used by the client.
+	if [ -n "${STEAM_BIN:-}" ] && [ -x "$STEAM_BIN" ]; then
+		slsm_elf_class "$STEAM_BIN" && return 0
+	fi
 	return 1
 }
 SLSM_PAYLOAD_CLASS="$(slsm_elf_class "$SLSDIR/SLSsteam.so" 2>/dev/null || true)"

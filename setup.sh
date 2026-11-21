@@ -305,34 +305,46 @@ slsm_elf_class() {
 # the actual client binary that will run, not just the launcher script.
 # Returns 2 for 64-bit, 1 for 32-bit, or nothing if undetermined.
 slsm_client_class() {
-	# Check steamrt3 first: if the 32-bit client exists, Steam will run it
-	# (even if the launcher points at steamrt64/steam). Injecting a 64-bit
-	# payload into a 32-bit client fails with "wrong ELF class".
-	for c in "$HOME/.local/share/Steam/steamrt32/steam" \
-	         "$HOME/.steam/steam/steamrt32/steam" \
-	         "${HOME}/.steam/debian-installation/steamrt32/steam"; do
-		if [ -x "$c" ] && slsm_elf_class "$c" | grep -qx 1; then
+	# Check the ELF class of the actual steam binary being launched.
+	# Both steamrt64 and steamrt32 may be installed on disk, but Steam may
+	# re-exec from steamrt64/steam into steamrt32/steam (seen on CachyOS and
+	# other mixed-arch systems). If the 32-bit client exists and might be
+	# used, report 32-bit so we never inject a 64-bit payload into a 32-bit
+	# process (ld.so would reject it with "wrong ELF class").
+	#
+	# IMPORTANT: Check 32-bit client FIRST, before checking the launched
+	# binary. Steam may launch as steamrt64/steam (64-bit) but re-exec into
+	# steamrt32/steam or ubuntu12_32/steam (32-bit). If we check the running
+	# binary first, we see 64-bit and inject the 64-bit payload, but then
+	# Steam re-execs as 32-bit and ld.so rejects it.
+	#
+	# We check ALL possible steamclient.so locations for a 32-bit client:
+	#   - $HOME/.local/share/Steam/steamrt32/steam
+	#   - $HOME/.steam/steam/steamrt32/steam
+	#   - $HOME/.steam/debian-installation/steamrt32/steam
+	#   - $HOME/.local/share/Steam/ubuntu12_32/steam
+	#   - $HOME/.steam/steam/ubuntu12_32/steam
+	#   - $HOME/.steam/debian-installation/ubuntu12_32/steam
+	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" "$HOME/.local/share/Steam"; do
+		if [ -x "$_r/steamrt32/steam" ] && \
+		   [ "$(slsm_elf_class "$_r/steamrt32/steam" 2>/dev/null || true)" = 1 ]; then
+			printf 1
+			return 0
+		fi
+		# Some distros (CachyOS, Arch) use ubuntu12_32/steam instead
+		if [ -x "$_r/ubuntu12_32/steam" ] && \
+		   [ "$(slsm_elf_class "$_r/ubuntu12_32/steam" 2>/dev/null || true)" = 1 ]; then
 			printf 1
 			return 0
 		fi
 	done
-	# Check steamrt64: if only the 64-bit client exists, report 64-bit.
+	# Only steamrt64 exists and is 64-bit.
 	for c in "$HOME/.local/share/Steam/steamrt64/steam" \
 	         "$HOME/.steam/steam/steamrt64/steam" \
 	         "${HOME}/.steam/debian-installation/steamrt64/steam"; do
-		if [ -x "$c" ] && slsm_elf_class "$c" | grep -qx 2; then
+		if [ -x "$c" ] && [ "$(slsm_elf_class "$c" 2>/dev/null || true)" = 2 ]; then
 			printf 2
 			return 0
-		fi
-	done
-	# Fall back to checking launcher scripts (not ELF binaries, but
-	# sometimes the only thing available).
-	for c in /usr/games/steam /usr/bin/steam /usr/local/bin/steam \
-	         "${HOME}/.local/share/Steam/steam.sh" \
-	         "${HOME}/.steam/steam/steam.sh" \
-	         "${HOME}/.steam/debian-installation/steam.sh"; do
-		if [ -x "$c" ]; then
-			slsm_elf_class "$c" && return 0
 		fi
 	done
 	return 1
@@ -1359,7 +1371,6 @@ EOF
 		chmod 0644 "$USER_DESKTOP"
 		user_desktop_changed=1
 		log_success "Created $USER_DESKTOP"
-	fi
 
 	# Guardian reconciliation already converged user caches. Refresh here only
 	# for the direct minimal fallback or a successful mutable-system pass.

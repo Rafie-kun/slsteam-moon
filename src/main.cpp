@@ -941,10 +941,13 @@ namespace
 		}
 
 		// Decky coexistence: leave Steam on its hard-coded 8080 — no rewrite, no
-		// contract. Gating here (not just via g_cefSessionPort) is essential: the
-		// lazy fallback below would otherwise pick a fresh ephemeral port and
-		// rewrite anyway.
-		if (g_cefKeepDefaultPort)
+		// contract. Gate both on the setup()-decided flag AND a direct
+		// deckyPresent() check: setup() runs in the la_preinit audit namespace
+		// instance while cefRewriteArgv runs in the exec-bind namespace
+		// instance, and on SteamOS those can be separate copies where the
+		// static g_cefKeepDefaultPort isn't shared. The direct check covers
+		// that case.
+		if (g_cefKeepDefaultPort || CefPort::deckyPresent())
 		{
 			return nullptr;
 		}

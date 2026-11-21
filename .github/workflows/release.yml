@@ -21,6 +21,13 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Install build dependencies
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            ca-certificates git g++ make pkg-config libssl-dev \
+            libcurl4-openssl-dev zip unzip binutils file
+
       - name: Determine release version
         id: meta
         run: |

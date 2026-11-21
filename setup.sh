@@ -906,8 +906,12 @@ slsm_refresh_patterns
 # CloudRedirect's constructor self-removes itself from LD_PRELOAD so child
 # processes (the game, steamwebhelper) don't inherit it.
 CR_SO="$HOME/.local/share/CloudRedirect/cloud_redirect.so"
-# Skip 32-bit cloud_redirect.so when running 64-bit steamrt64 (ELFCLASS64 = 02).
-if [ -f "$CR_SO" ] && [ "$(od -An -tx1 -j4 -N1 "$CR_SO" 2>/dev/null | tr -d '[:space:]')" = "02" ]; then
+# CloudRedirect is 32-bit only. Load it only when the Steam client is 32-bit
+# (steamrt32 detected). A 32-bit LD_PRELOAD cannot load into a 64-bit process,
+# and steamrt64 clients simply don't use CloudRedirect.
+if [ -f "$CR_SO" ] \
+   && [ "$(slsm_client_class 2>/dev/null || true)" = 1 ] \
+   && [ "$(od -An -tx1 -j4 -N1 "$CR_SO" 2>/dev/null | tr -d '[:space:]')" = "01" ]; then
 	export LD_PRELOAD="$CR_SO${LD_PRELOAD:+:$LD_PRELOAD}"
 fi
 

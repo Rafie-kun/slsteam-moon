@@ -1,0 +1,106 @@
+name: Sync releases to jsDelivr mirror
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout slsteam-moon
+        uses: actions/checkout@v4
+        with:
+          repository: Rafie-kun/jsdelivr
+          token: ${{ secrets.GITHUB_TOKEN }}
+          path: jsdelivr
+
+      - name: Get release info
+        id: release
+        run: |
+          # The release that triggered this workflow
+          echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          echo "repo=${GITHUB_REPOSITORY}" >> "$GITHUB_OUTPUT"
+
+      - name: Build manifest entry
+        id: manifest
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          REPO="${GITHUB_REPOSITORY}"
+          OWNER="${REPO%%/*}"
+          NAME="${REPO#*/}"
+
+          # Determine component key from repo name
+          case "$NAME" in
+            slsteam-moon) KEY="slsteam_moon" ;;
+            luatools-moon) KEY="plugin" ;;
+            lumen) KEY="lumen" ;;
+            *) echo "Unknown repo: $NAME" && exit 1 ;;
+          esac
+
+          # Get the commit SHA of the tag for pinning
+          SHA=$(git ls-remote --tags https://github.com/$REPO.git refs/tags/$TAG | awk '{print $1}')
+          if [ -z "$SHA" ]; then
+            echo "Could not resolve tag $TAG to a commit SHA" >&2
+            exit 1
+          fi
+
+          # Find the asset name
+          ASSET_NAME=""
+          case "$NAME" in
+            slsteam-moon) ASSET_NAME="slsteam-moon-linux-${TAG#v}.zip" ;;
+            luatools-moon) ASSET_NAME="luatools-linux.zip" ;;
+            lumen) ASSET_NAME="lumen-linux.zip" ;;
+          esac
+
+          # Build the commit-pinned URL
+          URL="https://cdn.jsdelivr.net/gh/$OWNER/$NAME@$SHA/dist/$ASSET_NAME"
+
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Update manifest.json
+        run: |
+          cd jsdelivr
+          KEY="${{ steps.manifest.outputs.key }}"
+          URL="${{ steps.manifest.outputs.url }}"
+          TAG="${{ steps.manifest.outputs.tag }}"
+
+          # Check if manifest.json exists
+          if [ ! -f manifest.json ]; then
+            echo '{"schema":1,"components":{}}' > manifest.json
+          fi
+
+          # Use python to update the manifest (jq may not be installed)
+          python3 -c "
+import json
+with open('manifest.json') as f:
+    m = json.load(f)
+m.setdefault('schema', 1)
+m.setdefault('components', {})
+m['components']['${KEY}'] = {
+    'url': '${URL}',
+    'sha256': '',
+    'tag': '${TAG}',
+    'schema': 1
+}
+with open('manifest.json', 'w') as f:
+    json.dump(m, f, indent=2)
+    f.write('\n')
+print('Updated manifest.json')
+cat manifest.json
+"
+
+      - name: Commit and push manifest
+        run: |
+          cd jsdelivr
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+          git add manifest.json
+          git commit -m "sync: add ${{ steps.manifest.outputs.key }} ${{ steps.manifest.outputs.tag }} to jsDelivr mirror" || echo "No changes to commit"
+          git push origin main || echo "Push failed (may already be synced)"

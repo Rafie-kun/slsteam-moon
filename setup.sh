@@ -365,6 +365,101 @@ slsm_client_class() {
 	return 1
 }
 
+# ============================================================================
+# OS / distro detection (adapted from headcrab.h3adcr-b and LuaToolsLinux).
+# ============================================================================
+
+detect_os_id()
+{
+	OS_ID=""
+	OS_ID_LIKE=""
+	if [ -r /etc/os-release ]; then
+		# shellcheck disable=SC1091
+		. /etc/os-release
+		OS_ID="${ID:-}"
+		OS_ID_LIKE="${ID_LIKE:-}"
+	fi
+}
+
+is_immutable_system()
+{
+	detect_os_id
+	case "$OS_ID" in
+		steamos) return 0 ;;
+	esac
+	# Fedora Silverblue/Kinoite (rpm-ostree)
+	if command -v rpm-ostree >/dev/null 2>&1; then
+		return 0
+	fi
+	# ostree-based systems
+	if [ -d /sysroot/ostree ] || [ -f /run/ostree-booted ]; then
+		return 0
+	fi
+	# SteamOS specific command
+	if command -v steamos-readonly >/dev/null 2>&1; then
+		return 0
+	fi
+	return 1
+}
+
+is_flatpak_steam()
+{
+	[ -d "$HOME/.var/app/com.valvesoftware.Steam/.steam/steam" ]
+}
+
+is_snap_steam()
+{
+	command -v snap >/dev/null 2>&1 && snap list 2>/dev/null | grep -q "^steam "
+}
+
+is_native_steam()
+{
+	command -v steam >/dev/null 2>&1 && [ -f /usr/bin/steam ]
+}
+
+detect_steam_type()
+{
+	if is_flatpak_steam; then
+		printf 'flatpak'
+	elif is_snap_steam; then
+		printf 'snap'
+	elif is_native_steam; then
+		printf 'native'
+	else
+		printf 'unknown'
+	fi
+}
+
+# Create steam.cfg to block Steam client auto-updates (adapted from headcrab).
+# This prevents Steam from overwriting our injected launch scripts on update.
+create_steam_cfg()
+{
+	local steam_dir=""
+	if is_flatpak_steam; then
+		steam_dir="$HOME/.var/app/com.valvesoftware.Steam/.steam/steam"
+	elif [ -d "$HOME/.steam/steam" ]; then
+		steam_dir="$HOME/.steam/steam"
+	elif [ -d "$HOME/.local/share/Steam" ]; then
+		steam_dir="$HOME/.local/share/Steam"
+	else
+		return 0
+	fi
+
+	local cfg="$steam_dir/steam.cfg"
+	if [ -f "$cfg" ]; then
+		log_info "steam.cfg already exists at $cfg (skipping)"
+		return 0
+	fi
+
+	log_info "Creating steam.cfg to block Steam client auto-updates"
+	cat > "$cfg" << 'EOF'
+BootStrapperInhibitAll=enable
+BootStrapperForceSelfUpdate=disable
+EOF
+	chmod 0644 "$cfg" 2>/dev/null || true
+	log_success "Created $cfg"
+}
+
 install_slssteam()
 {
 	LIB="./bin/SLSsteam.so"
@@ -1268,6 +1363,14 @@ setup_path_and_desktop()
 	fi
 	log_success "Found Steam binary at $steam_bin"
 
+	# --- Detect Steam install type ----------------------------------------
+	local steam_type
+	steam_type="$(detect_steam_type)"
+	log_info "Steam install type: $steam_type"
+
+	# --- Create steam.cfg to block Steam client auto-updates --------------
+	create_steam_cfg
+
 	# --- Mandatory user coverage, then optional system fallback -------------
 	mkdir -p "$USER_APPS"
 	export DC_STEAM_INSTALLED="$steam_bootstrapped"
@@ -1455,6 +1558,12 @@ install_steamstub()
 install_all()
 {
 	print_banner
+
+	# --- Immutable system detection ---------------------------------------
+	if is_immutable_system; then
+		log_warn "Immutable system detected (read-only /usr)"
+		log_warn "User-local coverage will be used; system-level changes are limited"
+	fi
 
 	print_section "Stopping Steam"
 	kill_steam

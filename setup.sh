@@ -305,46 +305,61 @@ slsm_elf_class() {
 # the actual client binary that will run, not just the launcher script.
 # Returns 2 for 64-bit, 1 for 32-bit, or nothing if undetermined.
 slsm_client_class() {
-	# Check the ELF class of the actual steam binary being launched.
-	# Both steamrt64 and steamrt32 may be installed on disk, but Steam may
-	# re-exec from steamrt64/steam into steamrt32/steam (seen on CachyOS and
-	# other mixed-arch systems). If the 32-bit client exists and might be
-	# used, report 32-bit so we never inject a 64-bit payload into a 32-bit
-	# process (ld.so would reject it with "wrong ELF class").
+	# Check the ELF class of the Steam client library that will actually be
+	# loaded into the process. steamclient.so always exists at the steamrt*
+	# paths (unlike the `steam` launcher binary which may be absent), so its
+	# class is the reliable indicator of whether the client is 32-bit or
+	# 64-bit.
 	#
-	# IMPORTANT: Check 32-bit client FIRST, before checking the launched
-	# binary. Steam may launch as steamrt64/steam (64-bit) but re-exec into
-	# steamrt32/steam or ubuntu12_32/steam (32-bit). If we check the running
-	# binary first, we see 64-bit and inject the 64-bit payload, but then
-	# Steam re-execs as 32-bit and ld.so rejects it.
+	# Check 64-bit first: steamrt64 is the modern Steam client. On systems
+	# where both steamrt64 and steamrt32 exist (mixed-arch installs), Steam
+	# runs steamrt64 unless it explicitly re-execs into steamrt32 (seen on
+	# CachyOS). Reporting 64-bit when steamrt64 exists matches what Steam
+	# actually runs on the vast majority of systems.
 	#
-	# We check ALL possible steamclient.so locations for a 32-bit client:
-	#   - $HOME/.local/share/Steam/steamrt32/steam
-	#   - $HOME/.steam/steam/steamrt32/steam
-	#   - $HOME/.steam/debian-installation/steamrt32/steam
-	#   - $HOME/.local/share/Steam/ubuntu12_32/steam
-	#   - $HOME/.steam/steam/ubuntu12_32/steam
-	#   - $HOME/.steam/debian-installation/ubuntu12_32/steam
+	# Both steamrt64 and steamrt32 may be installed on disk. If the 32-bit
+	# client exists AND steamrt64 does NOT, report 32-bit so we never inject
+	# a 64-bit payload into a 32-bit process (ld.so would reject it with
+	# "wrong ELF class").
+	#
+	# We check ALL possible steamclient.so locations:
+	#   - $HOME/.local/share/Steam/steamrt64/steamclient.so
+	#   - $HOME/.steam/steam/steamrt64/steamclient.so
+	#   - $HOME/.steam/debian-installation/steamrt64/steamclient.so
+	#   - $HOME/.local/share/Steam/steamrt32/steamclient.so
+	#   - $HOME/.steam/steam/steamrt32/steamclient.so
+	#   - $HOME/.steam/debian-installation/steamrt32/steamclient.so
+	#   - $HOME/.local/share/Steam/ubuntu12_32/steamclient.so
+	#   - $HOME/.steam/steam/ubuntu12_32/steamclient.so
+	#   - $HOME/.steam/debian-installation/ubuntu12_32/steamclient.so
 	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" "$HOME/.local/share/Steam"; do
-		if [ -x "$_r/steamrt32/steam" ] && \
-		   [ "$(slsm_elf_class "$_r/steamrt32/steam" 2>/dev/null || true)" = 1 ]; then
+		if [ -f "$_r/steamrt64/steamclient.so" ] && \
+		   [ "$(slsm_elf_class "$_r/steamrt64/steamclient.so" 2>/dev/null || true)" = 2 ]; then
+			printf 2
+			return 0
+		fi
+	done
+	for _r in "$HOME/.steam/steam" "$HOME/.steam/debian-installation" "$HOME/.local/share/Steam"; do
+		if [ -f "$_r/steamrt32/steamclient.so" ] && \
+		   [ "$(slsm_elf_class "$_r/steamrt32/steamclient.so" 2>/dev/null || true)" = 1 ]; then
 			printf 1
 			return 0
 		fi
 		# Some distros (CachyOS, Arch) use ubuntu12_32/steam instead
-		if [ -x "$_r/ubuntu12_32/steam" ] && \
-		   [ "$(slsm_elf_class "$_r/ubuntu12_32/steam" 2>/dev/null || true)" = 1 ]; then
+		if [ -f "$_r/ubuntu12_32/steamclient.so" ] && \
+		   [ "$(slsm_elf_class "$_r/ubuntu12_32/steamclient.so" 2>/dev/null || true)" = 1 ]; then
 			printf 1
 			return 0
 		fi
 	done
-	# Only steamrt64 exists and is 64-bit.
-	for c in "$HOME/.local/share/Steam/steamrt64/steam" \
-	         "$HOME/.steam/steam/steamrt64/steam" \
-	         "${HOME}/.steam/debian-installation/steamrt64/steam"; do
-		if [ -x "$c" ] && [ "$(slsm_elf_class "$c" 2>/dev/null || true)" = 2 ]; then
-			printf 2
-			return 0
+	# Fall back to checking launcher scripts (not ELF binaries, but
+	# sometimes the only thing available).
+	for c in /usr/games/steam /usr/bin/steam /usr/local/bin/steam \
+	         "${HOME}/.local/share/Steam/steam.sh" \
+	         "${HOME}/.steam/steam/steam.sh" \
+	         "${HOME}/.steam/debian-installation/steam.sh"; do
+		if [ -x "$c" ]; then
+			slsm_elf_class "$c" 2>/dev/null && return 0
 		fi
 	done
 	return 1

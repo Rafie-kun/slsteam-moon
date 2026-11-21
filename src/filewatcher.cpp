@@ -6,9 +6,9 @@
 #include "ownerwork.hpp"
 
 #include <atomic>
+#include <cerrno>
 #include <cstdlib>
 #include <mutex>
-#include <poll.h>
 #include <sys/inotify.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -77,14 +77,20 @@ void* watchLoop(void* args)
 		// never drains it, this tick eventually runs it here instead of losing
 		// it (see ownerwork.hpp). Cost is 2 idle wakeups per second, each a
 		// single relaxed atomic load when nothing is pending.
-		struct pollfd pfd{};
-		pfd.fd = watcher->notifyFd;
-		pfd.events = POLLIN;
-		const int ready = poll(&pfd, 1, OwnerWork::kIdleTickMs);
-		if (ready <= 0 || (pfd.revents & POLLIN) == 0)
+		const auto wait = FileWatcherBurst::waitReadable(
+			watcher->notifyFd, OwnerWork::kIdleTickMs);
+		if (wait == FileWatcherBurst::Wait::Closed)
 		{
-			// Timeout, EINTR, or a non-readable event: no inotify batch to
-			// handle, just service the queue and go round again.
+			// The descriptor can never deliver another event, so this watcher can no
+			// longer originate owner work either. Retrying would spin a core.
+			g_pLog->warn("FileWatcher %d: inotify descriptor closed or in error; stopping watcher\n",
+			             watcher->notifyFd);
+			return nullptr;
+		}
+		if (wait == FileWatcherBurst::Wait::Idle)
+		{
+			// Timeout or EINTR: no inotify batch to handle, just service the queue and go
+			// round again.
 			OwnerWork::idleTick();
 			continue;
 		}
@@ -96,9 +102,17 @@ void* watchLoop(void* args)
 		// just need to drain the batch and fire one reload.
 		alignas(inotify_event) char buf[4096];
 		ssize_t size = read(watcher->notifyFd, buf, sizeof(buf));
-		if (size <= 0)
+		if (size < 0 && (errno == EINTR || errno == EAGAIN))
 		{
 			continue;
+		}
+		if (size <= 0)
+		{
+			// poll() said readable, so a live inotify descriptor neither fails nor reads
+			// zero bytes here: stop instead of retrying a call that cannot succeed.
+			g_pLog->warn("FileWatcher %d: inotify read failed (errno=%d); stopping watcher\n",
+			             watcher->notifyFd, size < 0 ? errno : 0);
+			return nullptr;
 		}
 		size += static_cast<ssize_t>(
 			FileWatcherBurst::drainAdditionalReadable(watcher->notifyFd));

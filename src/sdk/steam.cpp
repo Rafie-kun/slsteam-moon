@@ -3,7 +3,7 @@
 #include "../log.hpp"
 
 #include <dlfcn.h>
-#include <libmem/libmem.h>
+#include <link.h>
 #include <sstream>
 
 namespace Steam
@@ -20,18 +20,16 @@ void Steam::free(void* mem)
 
 bool Steam::init()
 {
+#if defined(__x86_64__)
+	// Loaded from the audit namespace, a plain dlopen would bring in a second copy
+	// of tier0 whose allocator is not the client's.  SLSsteam attaches to the
+	// copy in the base namespace the same way on x86_64.
+	void* tier0 = dlmopen(LM_ID_BASE, "libtier0_s.so", RTLD_NOW | RTLD_LOCAL);
+#else
 	void* tier0 = dlopen("libtier0_s.so", RTLD_NOW);
+#endif
 	if (!tier0)
 	{
-		lm_module_t tier0Mod {};
-		if (LM_FindModule("libtier0_s.so", &tier0Mod))
-		{
-			tier0 = dlopen(tier0Mod.path, RTLD_NOW);
-		}
-	}
-	if (!tier0)
-	{
-		g_pLog->warn("Steam::init: dlopen(libtier0_s.so) failed: %s\n", dlerror());
 		return false;
 	}
 

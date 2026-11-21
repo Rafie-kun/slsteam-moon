@@ -10,6 +10,33 @@
 namespace FileWatcherBurst
 {
 
+enum class Wait
+{
+	Readable, // POLLIN: an inotify batch is waiting
+	Idle,     // timeout or EINTR: nothing to read, go round again
+	Closed    // the descriptor can never deliver another event: stop watching
+};
+
+// One bounded wait on the watcher's inotify descriptor.
+//
+// POLLNVAL (descriptor closed), POLLERR and POLLHUP are level-triggered: poll() reports
+// them immediately on every call. Treating them like a timeout turns the bounded wait into
+// a busy loop that burns a core for the whole session. That is what happened in the
+// steamrt64 bootstrapper, which closes every inherited descriptor after the library had
+// already started its watcher. Pending data is reported first so a final batch is still read.
+inline Wait waitReadable(int fd, int timeoutMs) noexcept
+{
+	struct pollfd pfd{};
+	pfd.fd = fd;
+	pfd.events = POLLIN;
+	const int ready = poll(&pfd, 1, timeoutMs);
+	if (ready < 0) return errno == EINTR ? Wait::Idle : Wait::Closed;
+	if (ready == 0) return Wait::Idle;
+	if ((pfd.revents & POLLIN) != 0) return Wait::Readable;
+	if ((pfd.revents & (POLLNVAL | POLLERR | POLLHUP)) != 0) return Wait::Closed;
+	return Wait::Idle;
+}
+
 // The caller has already consumed the first readable batch. Drain every
 // additional batch that arrives inside one quiet window, but return
 // periodically under continuous traffic so configuration updates cannot be

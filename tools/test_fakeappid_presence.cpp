@@ -9,7 +9,6 @@
 // the fake one, so Steam cannot expose the matching invite/join action.
 
 #include "../src/config.hpp"
-#include "../src/process.hpp"
 #include "../src/feats/fakeappid.hpp"
 #include "../src/sdk/CNetPacket.hpp"
 #include "../src/sdk/CProtoBufMsgBase.hpp"
@@ -34,11 +33,7 @@ CLog::CLog(const char* logPath) : path(logPath) {}
 CLog::~CLog() = default;
 LogLevel CLog::getMinLevel() { return LogLevel::None; }
 bool CLog::shouldNotify() { return false; }
-// Non-null only for the wildcard checks, which need a local user to ask
-// isSubscribed(); the routing checks above must work without one.
-static bool g_haveUser = false;
-CUser* getLocalUser() { return g_haveUser ? reinterpret_cast<CUser*>(&g_haveUser) : nullptr; }
-std::unordered_map<HSteamPipe, Process_t> g_processMap;
+CUser* getLocalUser() { return nullptr; }
 bool CUser::isSubscribed(uint32_t) { return false; }
 
 namespace Steam
@@ -85,9 +80,9 @@ void route(uint32_t realAppId, uint32_t fakeAppId, uint32_t expected)
 		bytes + sizeof(CNetPacketBody) + headerSize, messageSize);
 
 	CNetPacket packet{};
-	packet.setBody(body);
-	packet.setOriginalBody(body);
-	packet.setSize(packetSize);
+	packet.body = body;
+	packet.originalBody = body;
+	packet.size = packetSize;
 	FakeAppIds::sendMsg(&packet);
 
 	CMsgProtoBufHeader routed;
@@ -121,9 +116,9 @@ void preserveShortcut(uint64_t gameId)
 		bytes + sizeof(CNetPacketBody) + headerSize, messageSize);
 
 	CNetPacket packet{};
-	packet.setBody(body);
-	packet.setOriginalBody(body);
-	packet.setSize(packetSize);
+	packet.body = body;
+	packet.originalBody = body;
+	packet.size = packetSize;
 	FakeAppIds::sendMsg(&packet);
 
 	const auto result = packet.deserializeBody<CMsgClientGamesPlayed>();
@@ -132,28 +127,6 @@ void preserveShortcut(uint64_t gameId)
 	CHECK(result.games_played(0).game_id() == gameId,
 	      "shortcut IDs are selected by their type bit, not exact low word");
 	packet.free();
-}
-
-// "0: 480" must not reroute SteamUI's own callbacks: LaunchApp waits at
-// SynchronizingStats for UserStatsReceived_t posted to them.
-void wildcardCallbacks()
-{
-	g_config.fakeAppIds = std::unordered_map<uint32_t, uint32_t>{{0, 480}};
-	g_haveUser = true;
-
-	CHECK(FakeAppIds::getFakeAppId(0) == 0, "wildcard never maps appId 0");
-	CHECK(FakeAppIds::getFakeAppId(2379780) == 480, "wildcard maps an unsubscribed app");
-	CHECK(FakeAppIds::getFakeAppId(131073, true) == 0,
-	      "callback wildcard skips an app no game process runs as");
-
-	Process_t game{};
-	game.appId = 2379780;
-	g_processMap.emplace(7, std::move(game));
-	CHECK(FakeAppIds::getFakeAppId(2379780, true) == 480,
-	      "callback wildcard maps a running game");
-
-	g_processMap.clear();
-	g_haveUser = false;
 }
 }
 
@@ -167,8 +140,6 @@ int main()
 	route(123, 0, 123);
 
 	preserveShortcut(0x1234567802000001ULL);
-
-	wildcardCallbacks();
 
 	return failures == 0 ? 0 : 1;
 }

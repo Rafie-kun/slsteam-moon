@@ -11,36 +11,18 @@
 #include "../sdk/IClientUtils.hpp"
 
 std::unordered_map<HSteamPipe, AppId_t> FakeAppIds::fakeAppIdMap = std::unordered_map<HSteamPipe, AppId_t>();
-std::unordered_map<uint32_t, AppId_t> FakeAppIds::fakeAppIdMapServer = std::unordered_map<uint32_t, AppId_t>();
+std::unordered_map<uintptr_t, AppId_t> FakeAppIds::fakeAppIdMapServer = std::unordered_map<uintptr_t, AppId_t>();
 std::unordered_map<uint64_t, AppId_t> FakeAppIds::fakeAppIdMapPings = std::unordered_map<uint64_t, AppId_t>();
 
-static bool isRunningGameApp(const AppId_t appId)
+AppId_t FakeAppIds::getFakeAppId(const AppId_t appId)
 {
-	for (const auto& [pipe, process] : g_processMap)
-	{
-		if (process.appId == appId)
-		{
-			return true;
-		}
-	}
-	return false;
-}
-
-AppId_t FakeAppIds::getFakeAppId(const AppId_t appId, const bool runningOnly)
-{
-	// Key 0 is the wildcard, not a mapping for the Steam client itself.
-	if (!appId)
-	{
-		return 0;
-	}
-
 	auto fakeAppIds = g_config.fakeAppIds.get();
 
 	if (fakeAppIds.contains(appId))
 	{
 		return fakeAppIds[appId];
 	}
-	else if (fakeAppIds.contains(0) && (!runningOnly || isRunningGameApp(appId)))
+	else if (fakeAppIds.contains(0))
 	{
 		CUser* user = getLocalUser();
 		if (user != nullptr && !user->isSubscribed(appId))
@@ -190,7 +172,7 @@ void FakeAppIds::runIPCFrame(const bool post, const EIPCInterface interface)
 	g_pSteamEngine->setAppIdForCurrentPipe(appId);
 }
 
-void FakeAppIds::getServerDetails(uint32_t handle, gameserverdetails_t& details)
+void FakeAppIds::getServerDetails(uintptr_t handle, gameserverdetails_t& details)
 {
 	if (!fakeAppIdMapServer.contains(handle))
 	{

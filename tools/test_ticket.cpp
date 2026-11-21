@@ -26,18 +26,15 @@ namespace Ticket
 static_assert(std::is_same_v<decltype(&Ticket::forgetApp), bool (*)(uint32_t)>);
 static_assert(std::is_same_v<decltype(Ticket::SavedTicket::steamId), CSteamId>);
 static_assert(sizeof(CSteamId) == sizeof(uint64_t));
-// The 32-bit offsets were measured on a live client; the steamrt64 layout comes
-// from AceSLS's reverse engineering and is still gated at use time by
-// plausibleServerPipe().
-#if defined(__i386__)
+#if defined(__x86_64__)
+static_assert(offsetof(CServerPipe, pipeHandle) == 0x10);
+static_assert(offsetof(CServerPipe, pid) == 0x20);
+static_assert(offsetof(CServerPipe, threadId) == 0x24);
+#else
 static_assert(sizeof(CServerPipe) == 0x60);
 static_assert(offsetof(CServerPipe, pipeHandle) == 0x8);
 static_assert(offsetof(CServerPipe, pid) == 0x14);
 static_assert(offsetof(CServerPipe, userHandle) == 0x21);
-#elif defined(__x86_64__)
-static_assert(sizeof(CServerPipe) == 0x30);
-static_assert(offsetof(CServerPipe, pipeHandle) == 0x10);
-static_assert(offsetof(CServerPipe, pid) == 0x20);
 #endif
 
 static int g_failures = 0;

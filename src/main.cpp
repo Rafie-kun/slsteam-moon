@@ -4,6 +4,7 @@
 #include "sdk/steam.hpp"
 #include "api.hpp"
 #include "runtimedir.hpp"
+#include "system_libdirs.hpp"
 #include "audit_log.hpp"
 #include "audit_policy.hpp"
 #include "audit_symbols.hpp"
@@ -71,7 +72,9 @@ static bool cleanEnvVar(const char* varName, const char* endsWith)
 		auto split = splits.at(i);
 		if (split.ends_with(endsWith))
 		{
-			g_pLog->debug("Removed %s from $%s\n", endsWith, varName);
+			// g_pLog does not exist yet when the x86_64 webhelper branch cleans the env
+			if (g_pLog)
+				g_pLog->debug("Removed %s from $%s\n", endsWith, varName);
 			continue;
 		}
 
@@ -162,7 +165,17 @@ static std::atomic<bool> g_auditDiagnosticsEnabled{false};
 static std::atomic<bool> g_auditPolicyReady{false};
 static std::atomic<bool> g_auditBindAll{true};
 
-static void setup()
+// What asked for setup(): the loader's preinit callback, or steamclient.so/steamui.so being
+// mapped (la_objopen), which is the fallback when preinit was deliberately skipped.
+enum class SetupTrigger { Preinit, ClientModule };
+
+#if defined(__x86_64__)
+// Set by Valve's launcher in the client it re-launches inside the runtime container, absent in
+// the outer `steam` that starts it.
+static constexpr const char* kSteamrtGuardEnv = "STEAM_STEAMRT_RECURSION_GUARD";
+#endif
+
+static void setup(SetupTrigger trigger)
 {
 	lm_process_t proc {};
 	if (!LM_GetProcess(&proc))
@@ -170,6 +183,23 @@ static void setup()
 		unload();
 		return;
 	}
+
+#if defined(__x86_64__)
+	// SteamRT3 starts the client as
+	//   steam -> srt-client-container -> srt-bwrap -> pv-adverb -> steam
+	// The inner `steam` is the client to audit, and srt-client-container (above it)
+	// also spawns the games, so LD_AUDIT cannot be cleared early in `steam` any more:
+	// it has to survive down to the inner process.  Only the webhelper clears it.
+	if (strcmp(proc.name, "steamwebhelper") == 0)
+	{
+		cleanEnvVar("LD_AUDIT", "SLSsteam.so");
+		cleanEnvVar("LD_AUDIT", "library-inject.so");
+		cleanEnvVar("LD_AUDIT", "libSLSsteam.so");
+		cleanEnvVar("LD_AUDIT", "libSLS-library-inject.so");
+		unload();
+		return;
+	}
+#endif
 
 	//Do not do anything in other processes
 	if (strcmp(proc.name, "steam") != 0)
@@ -184,6 +214,33 @@ static void setup()
 		unload();
 		return;
 	}
+
+#if defined(__x86_64__)
+	// steamrt64 starts the client twice:
+	//   steam (outer bootstrapper) -> srt-client-container -> ... -> steam (client)
+	// Only the second one maps steamclient.so; the outer one re-launches itself in the
+	// runtime with STEAM_STEAMRT_RECURSION_GUARD set, closes every inherited descriptor and
+	// waits. Running the whole setup() there did duplicate work next to the client's own
+	// (config and appinfo writes, provisioning, a config watcher) and left that watcher
+	// spinning on its closed descriptor. Its LD_AUDIT stays in the environment, so the client
+	// it launches is still audited. Without the variable, la_objopen runs setup() from
+	// steamclient.so instead, so a Valve change to the launcher costs timing, not injection.
+	if (std::getenv(kSteamrtGuardEnv) == nullptr)
+	{
+		if (trigger == SetupTrigger::Preinit)
+		{
+			g_pLog->info("setup: steamrt64 bootstrapper (pid %d, no %s) -> skipped; "
+			             "the client it launches keeps LD_AUDIT\n",
+			             static_cast<int>(getpid()), kSteamrtGuardEnv);
+			return;
+		}
+		g_pLog->warn("setup: steamclient.so mapped in a `steam` process without %s -> "
+		             "running setup from la_objopen\n", kSteamrtGuardEnv);
+	}
+#else
+	(void)trigger;
+#endif
+
 	BootProf::Span setupProfile(g_pLog.get(), "setup");
 
 	// Every auditor namespace gets its own copy of these statics. A secondary
@@ -247,9 +304,16 @@ static void setup()
 	g_clientPid = static_cast<long>(getpid());
 	g_clientStartTicks = CefPort::readProcStartTicks(g_clientPid);
 
-	// Defer stripping $LD_AUDIT until load() (once steamclient.so and steamui.so
-	// are mapped) so steamrt64's outer bootstrapper -> pv-runtime -> inner steam
-	// handoff preserves LD_AUDIT into the containerised client process.
+	// Strip ourselves from $LD_AUDIT so child processes Steam spawns
+	// (reaper, steamwebhelper, games) don't re-audit and re-run our
+	// hooks in foreign processes.  setup() also early-outs on non-steam
+	// processes, but cleaning the env is cheaper and avoids surprises.
+#if !defined(__x86_64__)
+	cleanEnvVar("LD_AUDIT", "SLSsteam.so");
+	cleanEnvVar("LD_AUDIT", "library-inject.so");
+	cleanEnvVar("LD_AUDIT", "libSLSsteam.so");
+	cleanEnvVar("LD_AUDIT", "libSLS-library-inject.so");
+#endif
 
 
 	if(!g_config.init())
@@ -418,7 +482,7 @@ static void setup()
 	{
 		const char* cur = getenv("LD_LIBRARY_PATH");
 		std::string ldLibPath = cur ? cur : "";
-		ldLibPath.append(":/usr/lib:/usr/lib32");
+		ldLibPath.append(SystemLibDirs::ldLibraryPathSuffix());
 		setenv("LD_LIBRARY_PATH", ldLibPath.c_str(), true);
 	}
 
@@ -542,14 +606,6 @@ static void load()
 			}
 		}
 	}
-
-	// Strip ourselves from $LD_AUDIT now that steamclient.so and steamui.so
-	// are mapped so child processes Steam spawns (reaper, steamwebhelper,
-	// games) don't re-audit and re-run our hooks in foreign processes.
-	cleanEnvVar("LD_AUDIT", "SLSsteam.so");
-	cleanEnvVar("LD_AUDIT", "library-inject.so");
-	cleanEnvVar("LD_AUDIT", "libSLSsteam.so");
-	cleanEnvVar("LD_AUDIT", "libSLS-library-inject.so");
 
 	auto path = std::filesystem::path(g_modSteamClient.path);
 	auto dir = path.parent_path();
@@ -810,15 +866,9 @@ static void load()
 // threads call them).
 // ───────────────────────────────────────────────────────────────────────
 
-// The loader passes the audit interface version it implements; answer that,
-// capped at ours.  A loader that only knows v1 refuses a module answering v2,
-// and several glibc versions abort the process on that refusal instead of
-// ignoring the module, which would take the client down on an unsupported host.
-// Every hook this module defines exists in v1.
-extern "C" unsigned int la_version(unsigned int version)
+extern "C" unsigned int la_version(unsigned int)
 {
-	const unsigned int supported = static_cast<unsigned int>(LAV_CURRENT);
-	return version == 0 ? supported : (version < supported ? version : supported);
+	return LAV_CURRENT;
 }
 
 // ───────────────────────────────────────────────────────────────────────
@@ -941,13 +991,10 @@ namespace
 		}
 
 		// Decky coexistence: leave Steam on its hard-coded 8080 — no rewrite, no
-		// contract. Gate both on the setup()-decided flag AND a direct
-		// deckyPresent() check: setup() runs in the la_preinit audit namespace
-		// instance while cefRewriteArgv runs in the exec-bind namespace
-		// instance, and on SteamOS those can be separate copies where the
-		// static g_cefKeepDefaultPort isn't shared. The direct check covers
-		// that case.
-		if (g_cefKeepDefaultPort || CefPort::deckyPresent())
+		// contract. Gating here (not just via g_cefSessionPort) is essential: the
+		// lazy fallback below would otherwise pick a fresh ephemeral port and
+		// rewrite anyway.
+		if (g_cefKeepDefaultPort)
 		{
 			return nullptr;
 		}
@@ -1061,57 +1108,70 @@ namespace
 	}
 }
 
-#if defined(__x86_64__)
-extern "C" uintptr_t la_symbind64(Elf64_Sym* sym,
-                                  __attribute__((unused)) unsigned int ndx,
-                                  uintptr_t* refcook,
-                                  uintptr_t* defcook,
-                                  __attribute__((unused)) unsigned int* flags,
-                                  const char* symname)
-#else
+namespace
+{
+	// Shared by la_symbind32 (i386 loader) and la_symbind64 (x86_64 loader): a
+	// process only ever receives the callback of its own ELF class, so the 32-bit
+	// entry is dead code on x86_64 and the CEF port rewrite needs the 64-bit one.
+	uintptr_t bindAuditSymbol(uintptr_t orig, uintptr_t* refcook, uintptr_t* defcook,
+	                          const char* symname) noexcept
+	{
+		const AuditBinding::Symbol symbol = AuditBinding::classify(symname);
+		if (symbol == AuditBinding::Symbol::None)
+			return orig;
+
+		logAuditBinding(symbol, refcook, defcook);
+		switch (symbol)
+		{
+			case AuditBinding::Symbol::LocalStatsEpoch:
+				return reinterpret_cast<uintptr_t>(&slsteam_local_stats_epoch_v1);
+			case AuditBinding::Symbol::Execv:
+				if (!g_realExecv) g_realExecv = reinterpret_cast<execv_t>(orig);
+				return reinterpret_cast<uintptr_t>(&cefExecv);
+			case AuditBinding::Symbol::Execvp:
+				if (!g_realExecvp) g_realExecvp = reinterpret_cast<execv_t>(orig);
+				return reinterpret_cast<uintptr_t>(&cefExecvp);
+			case AuditBinding::Symbol::Execve:
+				if (!g_realExecve) g_realExecve = reinterpret_cast<execve_t>(orig);
+				return reinterpret_cast<uintptr_t>(&cefExecve);
+			case AuditBinding::Symbol::Execvpe:
+				if (!g_realExecvpe) g_realExecvpe = reinterpret_cast<execve_t>(orig);
+				return reinterpret_cast<uintptr_t>(&cefExecvpe);
+			case AuditBinding::Symbol::PosixSpawn:
+				if (!g_realSpawn) g_realSpawn = reinterpret_cast<spawn_t>(orig);
+				return reinterpret_cast<uintptr_t>(&cefSpawn);
+			case AuditBinding::Symbol::PosixSpawnp:
+				if (!g_realSpawnp) g_realSpawnp = reinterpret_cast<spawn_t>(orig);
+				return reinterpret_cast<uintptr_t>(&cefSpawnp);
+			case AuditBinding::Symbol::None:
+				break;
+		}
+		return orig;
+	}
+}
+
 extern "C" uintptr_t la_symbind32(Elf32_Sym* sym,
                                   __attribute__((unused)) unsigned int ndx,
                                   uintptr_t* refcook,
                                   uintptr_t* defcook,
                                   __attribute__((unused)) unsigned int* flags,
                                   const char* symname)
-#endif
 {
 	if (sym == nullptr)
 		return 0;
+	return bindAuditSymbol(static_cast<uintptr_t>(sym->st_value), refcook, defcook, symname);
+}
 
-	const AuditBinding::Symbol symbol = AuditBinding::classify(symname);
-	if (symbol == AuditBinding::Symbol::None)
-		return sym->st_value;
-
-	logAuditBinding(symbol, refcook, defcook);
-	const auto orig = static_cast<uintptr_t>(sym->st_value);
-	switch (symbol)
-	{
-		case AuditBinding::Symbol::LocalStatsEpoch:
-			return reinterpret_cast<uintptr_t>(&slsteam_local_stats_epoch_v1);
-		case AuditBinding::Symbol::Execv:
-			if (!g_realExecv) g_realExecv = reinterpret_cast<execv_t>(orig);
-			return reinterpret_cast<uintptr_t>(&cefExecv);
-		case AuditBinding::Symbol::Execvp:
-			if (!g_realExecvp) g_realExecvp = reinterpret_cast<execv_t>(orig);
-			return reinterpret_cast<uintptr_t>(&cefExecvp);
-		case AuditBinding::Symbol::Execve:
-			if (!g_realExecve) g_realExecve = reinterpret_cast<execve_t>(orig);
-			return reinterpret_cast<uintptr_t>(&cefExecve);
-		case AuditBinding::Symbol::Execvpe:
-			if (!g_realExecvpe) g_realExecvpe = reinterpret_cast<execve_t>(orig);
-			return reinterpret_cast<uintptr_t>(&cefExecvpe);
-		case AuditBinding::Symbol::PosixSpawn:
-			if (!g_realSpawn) g_realSpawn = reinterpret_cast<spawn_t>(orig);
-			return reinterpret_cast<uintptr_t>(&cefSpawn);
-		case AuditBinding::Symbol::PosixSpawnp:
-			if (!g_realSpawnp) g_realSpawnp = reinterpret_cast<spawn_t>(orig);
-			return reinterpret_cast<uintptr_t>(&cefSpawnp);
-		case AuditBinding::Symbol::None:
-			break;
-	}
-	return sym->st_value;
+extern "C" uintptr_t la_symbind64(Elf64_Sym* sym,
+                                  __attribute__((unused)) unsigned int ndx,
+                                  uintptr_t* refcook,
+                                  uintptr_t* defcook,
+                                  __attribute__((unused)) unsigned int* flags,
+                                  const char* symname)
+{
+	if (sym == nullptr)
+		return 0;
+	return bindAuditSymbol(static_cast<uintptr_t>(sym->st_value), refcook, defcook, symname);
 }
 
 extern "C" unsigned int la_objopen(struct link_map* map,
@@ -1124,7 +1184,7 @@ extern "C" unsigned int la_objopen(struct link_map* map,
 	{
 		if (!setupSuccess)
 		{
-			setup();
+			setup(SetupTrigger::ClientModule);
 		}
 		load();
 	}
@@ -1142,5 +1202,5 @@ extern "C" unsigned int la_objopen(struct link_map* map,
 
 extern "C" void la_preinit(__attribute__((unused)) uintptr_t* cookie)
 {
-	setup();
+	setup(SetupTrigger::Preinit);
 }

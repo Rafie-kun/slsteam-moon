@@ -1,13 +1,11 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
-#include <filesystem>
-#include <fstream>
-#include <iostream>
 #include <link.h>
-#include <set>
 #include <string>
 #include <unordered_set>
+
+#include "system_libdirs.hpp"
 
 
 //std::ofstream logFile("/tmp/env-mod.log");
@@ -28,17 +26,6 @@ static std::unordered_set<std::string> LIBS =
 	"libcurl.so.4.8.0",
 };
 
-static std::unordered_set<std::string> DIRS =
-{
-	//Fallback for 32 bit OS?
-	"/usr/local/lib",
-	"/usr/lib",
-
-	"/usr/local/lib32", //Bazzite
-	"/usr/lib/i386-linux-gnu/", //Mint
-	"/usr/lib32", //SteamOS
-};
-
 char *la_objsearch(const char *name, __attribute__((unused)) uintptr_t *cookie, unsigned int flag)
 {
 	if (flag != LA_SER_ORIG)
@@ -52,39 +39,25 @@ char *la_objsearch(const char *name, __attribute__((unused)) uintptr_t *cookie, 
 	{
 		//logFile << "Replacing: " << name << std::endl;
 
-		for(const auto& dir : DIRS)
+		// A library of the wrong class would make the process fail to start it: see
+		// SystemLibDirs::find, which only returns one this process can load.
+		const std::string found = SystemLibDirs::find(name, SystemLibDirs::kDirs);
+		if (!found.empty())
 		{
-			char path[255];
-			snprintf(path, sizeof(path), "%s/%s", dir.c_str(), name);
-			//logFile << "Path: " << path << std::endl;
-
-			if (!std::filesystem::exists(path))
+			if (char* n = static_cast<char*>(malloc(found.size() + 1)))
 			{
-				continue;
+				memcpy(n, found.c_str(), found.size() + 1);
+				return n;
 			}
-
-			char* n = reinterpret_cast<char*>(malloc(sizeof(path)));
-			if (!n)
-			{
-				//logFile << "Failed to allocate char*!\n";
-				break;
-			}
-
-			strcpy(n, path);
-
-			return n;
 		}
 	}
 
 	return const_cast<char*>(name);
 }
 
-unsigned int la_version(unsigned int version)
+unsigned int la_version(unsigned int)
 {
-	//Answer the version the loader offers, capped at ours: a v1 loader refuses
-	//a module answering v2, and some glibc versions abort the process on that.
-	const unsigned int supported = static_cast<unsigned int>(LAV_CURRENT);
-	return version == 0 ? supported : (version < supported ? version : supported);
+	return LAV_CURRENT;
 }
 
 //void la_preinit(__attribute__((unused)) uintptr_t *cookie)

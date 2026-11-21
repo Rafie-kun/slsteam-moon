@@ -8,6 +8,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <limits>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <vector>
@@ -82,6 +83,20 @@ namespace MemHlp
 			return moduleBase;
 		return segmentBase;
 	}
+	// Whether [address, address + size) lies inside [begin, end).  Written so that no
+	// intermediate sum can wrap: `address + size <= end` is true for address = 0 - 8
+	// (a null vtable minus a word), which is how a probe of a null pointer once read
+	// from 0xfffffffffffffff8.
+	inline bool rangeContains(lm_address_t begin, lm_address_t end,
+	                          lm_address_t address, lm_size_t size) noexcept
+	{
+		if (end < begin || address < begin)
+			return false;
+		const lm_size_t length = end - begin;
+		const lm_size_t offset = address - begin;
+		return size <= length && offset <= length - size;
+	}
+
 	inline bool prologueByteMatches(int16_t expected, lm_byte_t actual) noexcept
 	{
 		return expected == -1 || expected == actual;
@@ -183,7 +198,19 @@ namespace MemHlp
 	//TODO: Create hooking wrapper that calls this automatically
 	bool fixPICThunkCall(const char* name, lm_address_t fn, lm_address_t tramp);
 
+	// x86_64 has no PIC thunks, but LM_HookCode copies the displaced prologue
+	// verbatim: any RIP-relative operand or relative call/jmp in it points
+	// into the wrong place once it runs from the trampoline.  Re-assemble those
+	// instructions at their new location.
+	bool fixRelativeInstructions(lm_address_t oldLocation, lm_address_t newLocation, std::size_t size);
+
 	const char* getTypeName(void* pClass);
+
+	// Offset of the first embedded member of `pClass` whose vtable carries the
+	// RTTI type name `name` (Itanium mangling, e.g. "12IClientUtils"), or
+	// LM_ADDRESS_BAD.  Only 8-byte aligned slots are probed and every pointer is
+	// checked against the process' readable segments before it is dereferenced.
+	lm_address_t searchOffsetByTypeName(const void* pClass, const std::string& name);
 	
 	template<typename tFN, typename ...Args>
 	constexpr auto callVFunc(unsigned int index, void* thisPtr, Args... args)

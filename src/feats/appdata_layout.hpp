@@ -143,39 +143,14 @@ inline std::optional<Layout> derive(
 	std::span<const std::uint8_t> shaInstruction
 ) noexcept
 {
-	std::optional<std::int64_t> skip;
-	if (skipInstruction.size() >= 4 &&
-		skipInstruction[0] == 0x0F &&
-		skipInstruction[1] == 0xB6 &&
-		skipInstruction[2] == 0x40)
-	{
-		// x86-64: movzx eax, byte ptr [rax+disp8]
-		skip = detail::readDisplacement(skipInstruction, 3, 1);
-	}
-	else
-	{
-		// x86-32: cmp byte ptr [base+offset], 0: opcode 80, /7, direct disp8/disp32.
-		skip = detail::directDisplacement(
-			skipInstruction, 0x80, std::uint8_t{7}, true
-		);
-	}
-
-	std::optional<std::int64_t> sha;
-	if (shaInstruction.size() >= 4 &&
-		shaInstruction[0] == 0x48 &&
-		shaInstruction[1] == 0x39 &&
-		(shaInstruction[2] == 0x58 || shaInstruction[2] == 0x4B))
-	{
-		// x86-64: cmp qword ptr [rax+disp8], rbx / [rbx+disp8], rcx
-		sha = detail::readDisplacement(shaInstruction, 3, 1);
-	}
-	else
-	{
-		// x86-32: lea register, [base+offset]: opcode 8d, direct disp8/disp32.
-		sha = detail::directDisplacement(
-			shaInstruction, 0x8D, std::nullopt, false
-		);
-	}
+	// cmp byte ptr [base+offset], 0: opcode 80, /7, direct disp8/disp32.
+	const auto skip = detail::directDisplacement(
+		skipInstruction, 0x80, std::uint8_t{7}, true
+	);
+	// lea register, [base+offset]: opcode 8d, direct disp8/disp32.
+	const auto sha = detail::directDisplacement(
+		shaInstruction, 0x8D, std::nullopt, false
+	);
 	if (!skip.has_value() || !sha.has_value() ||
 		!detail::inBounds(*skip, 1) ||
 		!detail::inBounds(*sha, detail::kShaBytes) ||

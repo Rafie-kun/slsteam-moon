@@ -15,6 +15,10 @@
 #include "../patterns.hpp"
 
 #include "libmem/libmem.h"
+#if defined(__x86_64__)
+#include "../addr_plausible.hpp"
+#include "../detour_x64.hpp"
+#endif
 
 #include <array>
 #include <cstdint>
@@ -32,8 +36,9 @@ namespace
 	using OnChunkStackFn = void(*)(void*, void*, const char*, uint32_t,
 	                               const char*, uint32_t);
 #if defined(__x86_64__)
-	using OnChunkRegFn = void (*)(
-	    void*, void*, const char*, uint32_t, const char*, uint32_t);
+	// x86_64 has one calling convention: both copies of OnChunkUnpacked take the same six
+	// register arguments.
+	using OnChunkRegFn = OnChunkStackFn;
 #else
 	using OnChunkRegFn = void (__attribute__((regparm(3))) *)(
 	    void*, void*, const char*, uint32_t, const char*, uint32_t);
@@ -96,50 +101,40 @@ namespace
 		return text.str();
 	}
 
-	// Rejects null and non-canonical values before a dereference, so a layout
-	// drift yields "unknown depot" instead of a crash in the download thread.
-	bool plausiblePointer(const void* p)
-	{
-		const auto v = reinterpret_cast<uintptr_t>(p);
-#if defined(__x86_64__)
-		return v >= 0x10000 && v < 0x0000800000000000ull;
-#else
-		return v >= 0x10000;
-#endif
-	}
-
 	uint32_t depotIdFromContext(void* context)
 	{
 		if (!context) return 0;
 		const auto bytes = reinterpret_cast<const uint8_t*>(context);
 #if defined(__x86_64__)
-		// x86_64 widens every pointer: OnChunkUnpacked loads the owner from
-		// [ctx+0x10] (i386 [ctx+8]), and the owner's depot pointer moves from
-		// +0xc to +0x18 ("Downloading %u chunks for depot %u" reads
-		// [[owner+0x18]] where i386 reads [[owner+0xc]]).
-		constexpr size_t kOwnerOff = 0x10;
-		constexpr size_t kDepotOff = 0x18;
-#else
-		constexpr size_t kOwnerOff = 0x08;
-		constexpr size_t kDepotOff = 0x0c;
-#endif
-		const auto owner = *reinterpret_cast<void* const*>(bytes + kOwnerOff);
-		if (!plausiblePointer(owner)) return 0;
+		// x86_64 layout, read from OnChunkUnpacked: the context holds an object at +8, the
+		// owner at +0x10 (the i386 +8) and the depot object at +0x18; the owner's depot
+		// pointer sits at +0x18 (i386 +0xc: a vtable pointer and two members precede it, and
+		// widening the pointers puts the third member at +0x18 whatever the middle one is).
+		// The pointers are checked before every dereference.
+		const auto owner = *reinterpret_cast<void* const*>(bytes + 0x10);
+		if (!Addr::plausibleUserPointer(owner)) return 0;
 		const auto depot = *reinterpret_cast<void* const*>(
-		    reinterpret_cast<const uint8_t*>(owner) + kDepotOff);
-		if (!plausiblePointer(depot)) return 0;
+		    reinterpret_cast<const uint8_t*>(owner) + 0x18);
+		if (!Addr::plausibleUserPointer(depot)) return 0;
 		return *reinterpret_cast<const uint32_t*>(depot);
+#else
+		const auto owner = *reinterpret_cast<void* const*>(bytes + 0x08);
+		if (!owner) return 0;
+		const auto depot = *reinterpret_cast<void* const*>(
+		    reinterpret_cast<const uint8_t*>(owner) + 0x0c);
+		if (!depot) return 0;
+		return *reinterpret_cast<const uint32_t*>(depot);
+#endif
 	}
 
 	uint64_t chunkFingerprint(const void* chunk)
 	{
 		if (!chunk) return 0;
-		// OnChunkUnpacked itself formats the 20-byte SHA at chunk+0x0c (+0x10 on
-		// x86_64, behind the wider vtable pointer). Hashing it lets the policy
-		// distinguish separate failing chunks without copying or logging their
-		// identifiers.
+		// OnChunkUnpacked itself formats the 20-byte SHA at chunk+0x0c. Hashing
+		// it lets the policy distinguish separate failing chunks without copying
+		// or logging their identifiers.
 #if defined(__x86_64__)
-		const auto sha = reinterpret_cast<const uint8_t*>(chunk) + 0x10;
+		const auto sha = reinterpret_cast<const uint8_t*>(chunk) + 0x10;  // +4 for the vtable pointer
 #else
 		const auto sha = reinterpret_cast<const uint8_t*>(chunk) + 0x0c;
 #endif
@@ -341,6 +336,20 @@ namespace
 		}
 
 		detour.addr = pattern.address;
+#if defined(__x86_64__)
+		std::string reason;
+		const auto placed = DetourX64::place(
+		    detour.addr, reinterpret_cast<lm_address_t>(hook), &reason);
+		if (!placed)
+		{
+			g_pLog->warn("DepotQuarantine: could not hook %s: %s\n",
+			             pattern.name.c_str(), reason.c_str());
+			detour = {};
+			return false;
+		}
+		detour.size = placed->displaced;
+		detour.tramp = placed->trampoline;
+#else
 		detour.size = LM_HookCode(detour.addr,
 		                          reinterpret_cast<lm_address_t>(hook),
 		                          &detour.tramp);
@@ -352,6 +361,7 @@ namespace
 			return false;
 		}
 		MemHlp::fixPICThunkCall(pattern.name.c_str(), detour.addr, detour.tramp);
+#endif
 		detour.orig = reinterpret_cast<Fn>(detour.tramp);
 		return true;
 	}
@@ -359,11 +369,16 @@ namespace
 	template<typename Fn>
 	void uninstall(Detour<Fn>& detour)
 	{
+#if defined(__x86_64__)
+		if (detour.size && detour.addr != LM_ADDRESS_BAD)
+			DetourX64::remove(detour.addr);
+#else
 		if (detour.size && detour.addr != LM_ADDRESS_BAD
 		    && detour.tramp != LM_ADDRESS_BAD)
 		{
 			LM_UnhookCode(detour.addr, detour.tramp, detour.size);
 		}
+#endif
 		detour = {};
 	}
 }

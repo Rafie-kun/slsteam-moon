@@ -49,7 +49,14 @@ namespace VFTIndexes
 		constexpr int BLoggedOn = 4;
 		constexpr int GetSteamID = 10;
 		// Linux i386 IClientUserMap; the wrapper carries IPC hash 0xE0468CB4.
+#if defined(__x86_64__)
+		// steamrt64 client (sha256 53bdabbb...): IClientUserMap slot 121 is
+		// RequestEncryptedAppTicket and GetEncryptedAppTicket is slot 122 (the
+		// IPC hash differs there too).  Checked against the proxy's method names.
+		constexpr int GetEncryptedAppTicket = 122;
+#else
 		constexpr int GetEncryptedAppTicket = 121;
+#endif
 	}
 
 	namespace IClientUtils

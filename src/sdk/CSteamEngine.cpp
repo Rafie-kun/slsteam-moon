@@ -2,7 +2,6 @@
 
 #include "IClientCompat.hpp"
 #include "CUtl.hpp"
-#include "disp32.hpp"
 
 #include "../hooks.hpp"
 #include "../patterns.hpp"
@@ -34,14 +33,13 @@ CServerPipe* CSteamEngine::getServerPipe(const HSteamPipe pipe)
 
 CUser* CSteamEngine::getUser(uint32_t index)
 {
-#if defined(__x86_64__)
-	const static auto offset = Disp32::read(
-		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_User.address + 3));
+	#if defined(__x86_64__)
+	// `add r12,[rbp+disp32]`: the displacement starts at +3 and is 4 bytes wide.
+	const static auto offset = *reinterpret_cast<int32_t*>(Patterns::CSteamEngine::Offset_User.address + 0x3);
 #else
-	const static auto offset = Disp32::read(
-		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_User.address + 0x2));
+	const static auto offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_User.address + 0x2);
 #endif
-	const auto vec = Disp32::at<const CUtlVector<CUser*>>(this, offset);
+	const auto vec = reinterpret_cast<const CUtlVector<CUser*>*>(this + offset);
 	if (!vec->memory.base || index >= vec->size)
 	{
 		return nullptr;
@@ -57,13 +55,19 @@ IClientUtils* CSteamEngine::getUtils()
 		return nullptr;
 	}
 #if defined(__x86_64__)
-	const static auto offset = Disp32::read(
-		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 3));
+	// No byte locator.  IClientUtils is a secondary base of CSteamEngine (+0x1118 in the
+	// audited client): its vptr points into the CSteamEngine vtable group, so the member
+	// is the first word past the object's own vptr whose RTTI says "12CSteamEngine".
+	// (Searching for "12IClientUtils" finds nothing: no vtable carries that typeinfo.)
+	const static lm_address_t offset = MemHlp::searchOffsetByTypeName(this, "12CSteamEngine");
+	if (offset == LM_ADDRESS_BAD)
+	{
+		return nullptr;
+	}
 #else
-	const static auto offset = Disp32::read(
-		reinterpret_cast<const void*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 2));
+	const static lm_address_t offset = *reinterpret_cast<lm_address_t*>(Patterns::CSteamEngine::Offset_ClientUtils.address + 2);
 #endif
-	return Disp32::at<IClientUtils>(this, offset);
+	return reinterpret_cast<IClientUtils*>(reinterpret_cast<uint8_t*>(this) + offset);
 }
 
 void CSteamEngine::setAppIdForCurrentPipe(uint32_t appId)
@@ -101,10 +105,18 @@ IClientCompat* getLocalClientCompat()
 	if (user == nullptr || instruction == 0 || instruction == LM_ADDRESS_BAD)
 		return nullptr;
 
+#if defined(__x86_64__)
 	std::array<std::uint8_t, 7> bytes{};
+#else
+	std::array<std::uint8_t, 6> bytes{};
+#endif
 	if (LM_ReadMemory(instruction, bytes.data(), bytes.size()) != bytes.size())
 		return nullptr;
+#if defined(__x86_64__)
+	const auto offset = CompatLive::decodeManagerOffset64(bytes);
+#else
 	const auto offset = CompatLive::decodeManagerOffset(bytes);
+#endif
 	if (!offset.has_value()) return nullptr;
 
 	auto* const compat = reinterpret_cast<IClientCompat*>(

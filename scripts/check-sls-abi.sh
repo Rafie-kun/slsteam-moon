@@ -27,9 +27,16 @@ if ! "$READELF_BIN" --file-header "$BINARY" >"$HEADER_OUTPUT" 2>&1; then
 	echo "could not inspect SLSsteam ELF header: $BINARY" >&2
 	exit 1
 fi
-if ! grep -Eq 'Class:[[:space:]]+ELF64' "$HEADER_OUTPUT" \
-   || ! grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' "$HEADER_OUTPUT"; then
-	echo "$BINARY is not an ELF64 X86-64 binary" >&2
+# The build class follows the Steam client it targets: x86_64 for steamrt64 (the
+# default client), i386 for the legacy 32-bit one.
+if grep -Eq 'Class:[[:space:]]+ELF64' "$HEADER_OUTPUT" \
+   && grep -Eq 'Machine:[[:space:]]+Advanced Micro Devices X86-64' "$HEADER_OUTPUT"; then
+	ABI_LABEL="ELF64 x86-64"
+elif grep -Eq 'Class:[[:space:]]+ELF32' "$HEADER_OUTPUT" \
+     && grep -Eq 'Machine:[[:space:]]+Intel 80386' "$HEADER_OUTPUT"; then
+	ABI_LABEL="ELF32 Intel 80386"
+else
+	echo "$BINARY is neither an ELF64 x86-64 nor an ELF32 Intel 80386 binary" >&2
 	exit 1
 fi
 
@@ -53,10 +60,15 @@ while read -r major minor; do
 			exit 1
 			;;
 	esac
-	if [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -gt 34 ]; }; then
+	if [ "${SLSM_ALLOW_HOST_GLIBC:-0}" != 1 ] && \
+	   { [ "$major" -gt 2 ] || { [ "$major" -eq 2 ] && [ "$minor" -gt 34 ]; }; }; then
 		echo "$BINARY requires GLIBC_${major}.${minor}; maximum allowed is GLIBC_2.34" >&2
 		exit 1
 	fi
 done <<< "$VERSIONS"
 
-echo "SLSsteam ABI is compatible with ELF64 X86-64 and GLIBC_2.34"
+if [ "${SLSM_ALLOW_HOST_GLIBC:-0}" = 1 ]; then
+	echo "SLSsteam is $ABI_LABEL; glibc floor NOT enforced (host build, not for release)"
+else
+	echo "SLSsteam ABI is compatible with $ABI_LABEL and GLIBC_2.34"
+fi

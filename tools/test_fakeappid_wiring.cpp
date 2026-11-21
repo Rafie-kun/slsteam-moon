@@ -78,7 +78,11 @@ int main()
 	       "encrypted-ticket hook has one placement path");
 	expect(occurrences(hooks, "IClientUser_GetEncryptedAppTicket.remove();") == 1,
 	       "encrypted-ticket hook has one teardown path");
+#if defined(__x86_64__)
+	static_assert(VFTIndexes::IClientUser::GetEncryptedAppTicket == 122);
+#else
 	static_assert(VFTIndexes::IClientUser::GetEncryptedAppTicket == 121);
+#endif
 	expect(occurrences(
 		hooks, "CWebSocketConnection_BBuildAndAsyncSendFrame.remove();") == 1,
 	       "WebSocket detour has one teardown path");

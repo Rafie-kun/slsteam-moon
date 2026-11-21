@@ -21,26 +21,36 @@ inline constexpr std::uint32_t hiddenOwnershipFlags(
 	return 0;
 }
 
-inline std::optional<std::size_t> deriveOwnershipOffset(
+// x86_64: `41 8B /r disp8` = `mov r32,[r8-r15+disp8]` (REX.B).  The destination register is
+// free; a SIB base (rm=100) is refused, as is any other REX prefix.
+inline std::optional<std::size_t> deriveOwnershipOffset64(
 	std::span<const std::uint8_t> instruction) noexcept
 {
-	std::size_t offset = 0;
-	if (instruction.size() >= 4 && instruction[0] == 0x41 &&
-		instruction[1] == 0x8B && instruction[2] == 0x56)
-	{
-		// x86-64: `41 8B 56 disp8`: `mov edx, [r14 + disp8]`.
-		offset = instruction[3];
-	}
-	else if (instruction.size() >= 3 && instruction[0] == 0x8B &&
-		(instruction[1] == 0x41 || instruction[1] == 0x42))
-	{
-		// x86-32: `8B /r` with mod=01 (disp8) and reg=eax, i.e. `mov eax,[base+disp8]`.
-		offset = instruction[2];
-	}
-	else
+	if (instruction.size() < 4 || instruction[0] != 0x41 || instruction[1] != 0x8B ||
+		(instruction[2] & 0xC0) != 0x40 || (instruction[2] & 0x07) == 0x04)
 	{
 		return std::nullopt;
 	}
+	const std::size_t offset = instruction[3];
+	if (offset == 0 || offset > 0x100 || (offset % alignof(std::uint32_t)) != 0)
+		return std::nullopt;
+	return offset;
+}
+
+inline std::optional<std::size_t> deriveOwnershipOffset(
+	std::span<const std::uint8_t> instruction) noexcept
+{
+	// `8B /r` with mod=01 (disp8) and reg=eax, i.e. `mov eax,[base+disp8]`.
+	// Steam's own register allocation for the app pointer is not stable across
+	// builds (ecx on 2026-08-03, edx on 2026-08-16), so accept either base while
+	// still refusing any other destination register, a SIB byte (rm=100), and
+	// [ebp+disp8] (rm=101), none of which are this read.
+	if (instruction.size() < 3 || instruction[0] != 0x8B ||
+		(instruction[1] != 0x41 && instruction[1] != 0x42))
+	{
+		return std::nullopt;
+	}
+	const std::size_t offset = instruction[2];
 	if (offset == 0 || offset > 0x100 || (offset % alignof(std::uint32_t)) != 0)
 		return std::nullopt;
 	return offset;

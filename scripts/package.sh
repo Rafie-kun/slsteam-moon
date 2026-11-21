@@ -2,7 +2,9 @@
 # Package the release zip that GitHub releases distribute.
 #
 # Produces:
-#   dist/slsteam-moon-linux-<version>.zip
+#   dist/slsteam-moon-linux-<version>.zip            (ELF32 build, legacy 32-bit client)
+#   dist/slsteam-moon-linux-<version>-x86_64.zip     (ELF64 build, steamrt64 client)
+#   dist/slsteam-moon-linux-<version>-x86_64-host.zip  (with --host, never published)
 #
 # Layout inside the zip (matches what consumers and luatools-moon
 # expect: a single top-level slsteam-moon-<version>/ directory containing
@@ -35,6 +37,9 @@
 # Usage:
 #   scripts/package.sh                      # version from res/version.txt
 #   scripts/package.sh --version 2.0        # explicit version
+#   scripts/package.sh --host               # local test zip from a host build: skips the
+#                                           # glibc 2.34 floor (release builds go through
+#                                           # scripts/build.sh --portable and keep it)
 #   scripts/package.sh --help
 
 set -euo pipefail
@@ -44,9 +49,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 cd "$REPO_ROOT"
 
 VERSION=""
+HOST_BUILD=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--version) VERSION="${2:-}"; shift 2 ;;
+		--host) HOST_BUILD=1; shift ;;
 		-h|--help)
 			sed -n '2,28p' "$0" | sed 's/^# \{0,1\}//'
 			exit 0
@@ -107,11 +114,24 @@ check_binary_freshness bin/pattern-refresh pattern-refresh \
 	src/utils/process_lock.hpp res/pattern-public-key.hex Makefile \
 	scripts/build.sh scripts/_build-host.sh scripts/_build-portable.sh scripts/Dockerfile
 
-scripts/check-sls-abi.sh bin/SLSsteam.so
+if [ "$HOST_BUILD" = 1 ]; then
+	SLSM_ALLOW_HOST_GLIBC=1 scripts/check-sls-abi.sh bin/SLSsteam.so
+else
+	scripts/check-sls-abi.sh bin/SLSsteam.so
+fi
 scripts/check-pattern-refresh-abi.sh bin/pattern-refresh
 
+# The zip name carries the build class so an installer can pick the asset that
+# matches the Steam client it will hook (EI_CLASS byte: 01 = ELF32, 02 = ELF64).
+ZIP_SUFFIX=""
+if [ "$(od -An -tx1 -j4 -N1 bin/SLSsteam.so | tr -d ' \n')" = 02 ]; then
+	ZIP_SUFFIX="-x86_64"
+fi
+[ "$HOST_BUILD" = 1 ] && ZIP_SUFFIX="${ZIP_SUFFIX}-host"
+ZIP_NAME="slsteam-moon-linux-${VERSION}${ZIP_SUFFIX}.zip"
+
 PKG_DIR="dist/slsteam-moon-${VERSION}"
-ZIP_PATH="dist/slsteam-moon-linux-${VERSION}.zip"
+ZIP_PATH="dist/${ZIP_NAME}"
 
 echo "==> staging $PKG_DIR"
 rm -rf "$PKG_DIR" "$ZIP_PATH"
@@ -122,9 +142,6 @@ cp bin/library-inject.so "$PKG_DIR/bin/"
 cp bin/pattern-refresh   "$PKG_DIR/bin/"
 cp setup.sh              "$PKG_DIR/"
 cp res/config.yaml       "$PKG_DIR/res/"
-# The installer copies this to $SLSDIR/version so the payload auto-updater can
-# tell whether a release tag is actually newer than what is on disk.
-printf '%s\n' "$VERSION" > "$PKG_DIR/res/release-version.txt"
 cp -r docs/LICENSE       "$PKG_DIR/docs/"
 cp -r tools/steamstub-bypass "$PKG_DIR/tools/"
 
@@ -133,8 +150,6 @@ cp -r tools/steamstub-bypass "$PKG_DIR/tools/"
 cp tools/desktop-coverage.lib.sh       "$PKG_DIR/tools/desktop-coverage.lib.sh"
 cp tools/launcher-shim.lib.sh          "$PKG_DIR/tools/launcher-shim.lib.sh"
 cp tools/desktop-guardian-units.lib.sh "$PKG_DIR/tools/desktop-guardian-units.lib.sh"
-# Payload updater; setup.sh installs it next to the libs and the wrapper runs it.
-cp tools/slsm-autoupdate.sh            "$PKG_DIR/tools/slsm-autoupdate.sh"
 cp ensure-desktop-coverage.sh          "$PKG_DIR/ensure-desktop-coverage.sh"
 
 # Strip any build/IDE artefacts that may live alongside steamstub-bypass.
@@ -154,15 +169,33 @@ fi
 cp -r tools/steamless-bin "$PKG_DIR/tools/"
 
 echo "==> zipping $ZIP_PATH"
-( cd dist && zip -qr -9 "slsteam-moon-linux-${VERSION}.zip" "slsteam-moon-${VERSION}" )
+if command -v zip >/dev/null 2>&1; then
+	( cd dist && zip -qr -9 "$ZIP_NAME" "slsteam-moon-${VERSION}" )
+else
+	# No zip(1) here (it is not part of a default Debian install): same archive,
+	# written with python3 so the executable bits survive.
+	( cd dist && python3 - "$ZIP_NAME" "slsteam-moon-${VERSION}" <<'PY'
+import os, sys, zipfile
+out, top = sys.argv[1], sys.argv[2]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
+    for root, dirs, files in os.walk(top):
+        dirs.sort()
+        for name in sorted(files):
+            path = os.path.join(root, name)
+            info = zipfile.ZipInfo.from_file(path)
+            info.compress_type = zipfile.ZIP_DEFLATED
+            with open(path, "rb") as fh:
+                zf.writestr(info, fh.read(), zipfile.ZIP_DEFLATED, 9)
+PY
+	)
+fi
 # Publish a sha256 sidecar next to the asset. The installer on the paired
 # luatools-moon branch fetches "<asset>.sha256" and refuses an asset that does
 # not match it, so a truncated or altered archive is caught before it is unpacked
 # and executed; an installer that predates that change ignores the sidecar. This
 # detects transport and mirror damage, NOT a compromised publishing account —
 # that needs a detached signature and a project signing key.
-( cd dist && sha256sum "slsteam-moon-linux-${VERSION}.zip" \
-    > "slsteam-moon-linux-${VERSION}.zip.sha256" )
+( cd dist && sha256sum "$ZIP_NAME" > "${ZIP_NAME}.sha256" )
 
 # Show a quick listing so callers can eyeball the contents.
 echo

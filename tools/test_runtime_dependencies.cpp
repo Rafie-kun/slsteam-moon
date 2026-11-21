@@ -34,22 +34,13 @@ namespace
 
 int main()
 {
-	check(RuntimeDependencies::missingTools(true, true, true).empty(),
+	check(RuntimeDependencies::missingTools(true, true).empty(),
 	      "no missing tools produces no detail");
-	check(RuntimeDependencies::missingTools(false, true, true) == "unzip",
-	      "missing unzip is identified");
-	check(RuntimeDependencies::missingTools(true, false, true) == "gzip",
+	check(RuntimeDependencies::missingTools(false, true) == "gzip",
 	      "missing gzip is identified");
-	check(RuntimeDependencies::missingTools(false, false, true) == "unzip, gzip",
-	      "both archive tools share one diagnostic");
-	check(RuntimeDependencies::missingTools(true, true, false) == "timeout",
+	check(RuntimeDependencies::missingTools(true, false) == "timeout",
 	      "missing timeout is identified");
-	check(RuntimeDependencies::missingTools(false, true, false) == "unzip, timeout",
-	      "missing unzip and timeout share one diagnostic");
-	check(RuntimeDependencies::missingTools(true, false, false) == "gzip, timeout",
-	      "missing gzip and timeout share one diagnostic");
-	check(RuntimeDependencies::missingTools(false, false, false)
-	          == "unzip, gzip, timeout",
+	check(RuntimeDependencies::missingTools(false, false) == "gzip, timeout",
 	      "all missing tools share one diagnostic");
 
 	char rootTemplate[] = "/tmp/slsteam-runtime-deps-XXXXXX";
@@ -62,15 +53,20 @@ int main()
 	{
 		const std::string root(rootPath);
 		check(RuntimeDependencies::missingToolsOnPath(root.c_str())
-		          == "unzip, gzip, timeout",
+		          == "gzip, timeout",
 		      "PATH probe reports all missing helpers");
+		check(createExecutable(root, "gzip", 0600),
+		      "PATH fixture creates a non-executable gzip");
+		check(RuntimeDependencies::missingToolsOnPath(root.c_str())
+		          == "gzip, timeout",
+		      "PATH probe recognizes only executable helpers");
 		check(createExecutable(root, "unzip"),
 		      "PATH fixture creates an executable unzip");
 		check(RuntimeDependencies::missingToolsOnPath(root.c_str())
 		          == "gzip, timeout",
-		      "PATH probe recognizes only executable helpers");
+		      "an unzip on PATH neither satisfies nor is required");
 		check(createExecutable(root, "gzip"),
-		      "PATH fixture creates an executable gzip");
+		      "PATH fixture makes gzip executable");
 		check(createExecutable(root, "timeout"),
 		      "PATH fixture creates an executable timeout");
 		check(RuntimeDependencies::missingToolsOnPath(root.c_str()).empty(),

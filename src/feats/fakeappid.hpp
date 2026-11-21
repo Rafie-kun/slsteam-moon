@@ -13,12 +13,11 @@ struct servernetadr_t;
 namespace FakeAppIds
 {
 	extern std::unordered_map<HSteamPipe, AppId_t> fakeAppIdMap;
-	extern std::unordered_map<uint32_t, AppId_t> fakeAppIdMapServer;
+	// Server-list request handles are pointers (HServerRequest): keep their full width.
+	extern std::unordered_map<uintptr_t, AppId_t> fakeAppIdMapServer;
 	extern std::unordered_map<uint64_t, AppId_t> fakeAppIdMapPings;
 
-	// runningOnly: apply the "0:" wildcard only to an appId that a connected
-	// game process runs as (explicit mappings are unaffected).
-	AppId_t getFakeAppId(const AppId_t appId, const bool runningOnly = false);
+	AppId_t getFakeAppId(const AppId_t appId);
 	AppId_t getRealAppIdFromEnv(const HSteamPipe pipe);
 	AppId_t getRealAppIdForCurrentPipe(const bool fallback = true);
 	bool shouldUseRealAppIdForInterface(const EIPCInterface type);
@@ -28,7 +27,7 @@ namespace FakeAppIds
 	void runIPCFrame(const bool post, const EIPCInterface interface);
 
 	//Serverbrowser
-	void getServerDetails(uint32_t handle, gameserverdetails_t& details);
+	void getServerDetails(uintptr_t handle, gameserverdetails_t& details);
 	uint32_t requestInternetServerList(uint32_t appId);
 	void pingResponse(gameserverdetails_t* details);
 

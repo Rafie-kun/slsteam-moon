@@ -539,6 +539,11 @@ namespace
 	}
 }
 
+#if defined(__x86_64__)
+// Fed only by the PackagePatch LoadPackage hook, which is off on x86_64 until
+// the PackageInfo layout is verified (PLAN.md, phase 4).
+void observePackage(const PackageInfo*, bool) {}
+#else
 void observePackage(const PackageInfo* package, bool available)
 {
 	if (!package || !package->PackageId) return;
@@ -607,6 +612,7 @@ void observePackage(const PackageInfo* package, bool available)
 			"Donor: all %zu licensed package(s) resolved (%zu depot(s))\n",
 			licenseCount, depotCount);
 }
+#endif
 
 void onLicenseList(const CMsgClientLicenseList* message)
 {

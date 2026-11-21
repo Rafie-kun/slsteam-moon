@@ -5,6 +5,10 @@
 #include "../patterns.hpp"
 
 #include "libmem/libmem.h"
+#if defined(__x86_64__)
+#include "../detour_x64.hpp"
+#include <string>
+#endif
 
 #include <atomic>
 #include <cstddef>
@@ -127,8 +131,14 @@ void setup()
 	}
 
 	const lm_address_t receiver = Patterns::ParentalSettingsReceived.address;
+#if defined(__x86_64__)
+	// The i386 prologue check does not apply; the locator is a string xref on the three
+	// log lines only this function carries.
+	if (receiver == 0 || receiver == LM_ADDRESS_BAD)
+#else
 	if (receiver == 0 || receiver == LM_ADDRESS_BAD
 	    || !looksLikeSettingsReceiver(reinterpret_cast<const uint8_t*>(receiver), 32))
+#endif
 	{
 		g_pLog->warn("Parental: internal settings receiver unavailable; local unlock disabled\n");
 		return;
@@ -176,9 +186,28 @@ void setup()
 	}
 
 	g_receiver = receiver;
+#if defined(__x86_64__)
+	{
+		std::string reason;
+		const auto placed = DetourX64::place(
+			g_receiver, reinterpret_cast<lm_address_t>(&hkSettingsReceived), &reason);
+		if (placed)
+		{
+			g_hookSize = placed->displaced;
+			g_trampoline = placed->trampoline;
+		}
+		else
+		{
+			g_hookSize = 0;
+			g_trampoline = LM_ADDRESS_BAD;
+			g_pLog->warn("Parental: settings receiver detour failed: %s\n", reason.c_str());
+		}
+	}
+#else
 	g_hookSize = LM_HookCode(g_receiver,
 	                        reinterpret_cast<lm_address_t>(&hkSettingsReceived),
 	                        &g_trampoline);
+#endif
 	if (!g_hookSize || g_trampoline == 0 || g_trampoline == LM_ADDRESS_BAD)
 	{
 		if (g_signaturePatched)
@@ -208,7 +237,12 @@ void remove()
 	std::unique_lock lifecycleLock(g_lifecycleMutex);
 	if (g_hookSize && g_receiver != LM_ADDRESS_BAD && g_trampoline != LM_ADDRESS_BAD)
 	{
-		if (!LM_UnhookCode(g_receiver, g_trampoline, g_hookSize))
+#if defined(__x86_64__)
+		const bool unhooked = DetourX64::remove(g_receiver);
+#else
+		const bool unhooked = LM_UnhookCode(g_receiver, g_trampoline, g_hookSize);
+#endif
+		if (!unhooked)
 		{
 			g_pLog->warn("Parental: could not remove the internal settings hook\n");
 			return;

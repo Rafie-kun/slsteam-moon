@@ -14,8 +14,10 @@ missing=()
 command -v g++  >/dev/null 2>&1 || missing+=("g++")
 command -v make >/dev/null 2>&1 || missing+=("make")
 
-# 32-bit headers are required (-m32). Sniff for either pkg-config layout.
-if ! [ -d /usr/lib/i386-linux-gnu/pkgconfig ] && ! [ -d /usr/lib32/pkgconfig ]; then
+# 32-bit headers are required only for the i386 build (-m32); the default build on a
+# 64-bit host targets the 64-bit client and needs the ordinary dev packages.
+ARCH="${ARCH:-$(uname -m)}"
+if [ "$ARCH" != "x86_64" ] && ! [ -d /usr/lib/i386-linux-gnu/pkgconfig ] && ! [ -d /usr/lib32/pkgconfig ]; then
 	missing+=("32-bit dev libs (libssl-dev:i386, libcurl4-openssl-dev:i386, or distro equivalent)")
 fi
 
@@ -37,8 +39,10 @@ if [ ${#missing[@]} -gt 0 ]; then
 	exit 1
 fi
 
-# Make sure 32-bit pkg-config sees our libs.
-if [ -d /usr/lib/i386-linux-gnu/pkgconfig ]; then
+# Make sure 32-bit pkg-config sees our libs (i386 build only).
+if [ "$ARCH" = "x86_64" ]; then
+	:
+elif [ -d /usr/lib/i386-linux-gnu/pkgconfig ]; then
 	export PKG_CONFIG_PATH=/usr/lib/i386-linux-gnu/pkgconfig
 elif [ -d /usr/lib32/pkgconfig ]; then
 	export PKG_CONFIG_PATH=/usr/lib32/pkgconfig

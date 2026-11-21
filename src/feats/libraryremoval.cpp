@@ -2,6 +2,7 @@
 
 #include "libraryremoval.hpp"
 
+
 #include "hotreload_inputs.hpp"
 #include "hotreload_capabilities.hpp"
 #include "libraryremoval_policy.hpp"
@@ -12,6 +13,13 @@
 #include "../patterns.hpp"
 
 #include "libmem/libmem.h"
+#if defined(__x86_64__)
+#include "../detour_x64.hpp"
+#include <string>
+#define LR_CDECL
+#else
+#define LR_CDECL __attribute__((cdecl))
+#endif
 #include <array>
 #include <atomic>
 #include <cstddef>
@@ -19,11 +27,11 @@
 
 namespace
 {
-using GetAppByIDFn = void* (__attribute__((cdecl)) *)(
+using GetAppByIDFn = void* (LR_CDECL *)(
 	void*, std::uint32_t, bool);
-using MarkAppChangeFn = void (__attribute__((cdecl)) *)(
+using MarkAppChangeFn = void (LR_CDECL *)(
 	void*, std::uint32_t, std::uint32_t);
-using RunFrameFn = void* (__attribute__((cdecl)) *)(void*);
+using RunFrameFn = void* (LR_CDECL *)(void*);
 
 template<typename Fn>
 struct Detour
@@ -44,11 +52,10 @@ std::size_t g_ownershipFlagsOffset = 0;
 Detour<MarkAppChangeFn> g_markAppChange;
 Detour<RunFrameFn> g_runFrame;
 
-#if defined(__i386__)
+#if !defined(__x86_64__)
 static_assert(sizeof(void*) == 4,
 	"SteamUI protobuf layout is defined for the Linux i386 client");
 #endif
-// TODO(steamrt64): Re-verify SteamUI 64-bit protobuf layout against steamrt64/steamui.so.
 
 template<typename Fn>
 void uninstall(Detour<Fn>& detour) noexcept
@@ -56,7 +63,11 @@ void uninstall(Detour<Fn>& detour) noexcept
 	if (detour.size != 0 && detour.target != LM_ADDRESS_BAD &&
 		detour.trampoline != LM_ADDRESS_BAD)
 	{
+#if defined(__x86_64__)
+		DetourX64::remove(detour.target);
+#else
 		LM_UnhookCode(detour.target, detour.trampoline, detour.size);
+#endif
 	}
 	detour = {};
 }
@@ -69,6 +80,21 @@ bool install(
 	bool repairPicThunk)
 {
 	detour.target = pattern.address;
+#if defined(__x86_64__)
+	(void)repairPicThunk;
+	std::string reason;
+	const auto placed = DetourX64::place(detour.target, hook, &reason);
+	if (!placed)
+	{
+		if (g_pLog != nullptr)
+			g_pLog->warn("LibraryRemoval: %s: %s\n", pattern.name.c_str(), reason.c_str());
+		detour = {};
+		return false;
+	}
+	detour.size = placed->displaced;
+	detour.trampoline = placed->trampoline;
+	detour.original = reinterpret_cast<Fn>(detour.trampoline);
+#else
 	detour.size = LM_HookCode(
 		detour.target, hook, &detour.trampoline);
 	if (detour.size == 0 || detour.trampoline == LM_ADDRESS_BAD)
@@ -85,6 +111,7 @@ bool install(
 		uninstall(detour);
 		return false;
 	}
+#endif
 	return true;
 }
 
@@ -135,7 +162,7 @@ void processOneRemoval(void* controller)
 				? "removal" : "restoration");
 }
 
-void __attribute__((cdecl)) hkMarkAppChange(
+void LR_CDECL hkMarkAppChange(
 	void* source,
 	std::uint32_t appId,
 	std::uint32_t flags)
@@ -144,7 +171,7 @@ void __attribute__((cdecl)) hkMarkAppChange(
 	g_markAppChange.original(source, appId, flags);
 }
 
-void* __attribute__((cdecl)) hkRunFrame(void* controller)
+void* LR_CDECL hkRunFrame(void* controller)
 {
 	if (g_ready.load(std::memory_order_acquire))
 	{
@@ -177,8 +204,13 @@ bool deriveOwnershipOffset(std::size_t& offset) noexcept
 		return false;
 	}
 
+#if defined(__x86_64__)
+	const auto decoded = LibraryRemovalPolicy::deriveOwnershipOffset64(
+		std::span<const std::uint8_t>(instruction));
+#else
 	const auto decoded = LibraryRemovalPolicy::deriveOwnershipOffset(
 		std::span<const std::uint8_t>(instruction));
+#endif
 	if (!decoded)
 		return false;
 	offset = *decoded;
@@ -328,3 +360,4 @@ void restore(std::uint32_t appId) noexcept
 }
 
 } // namespace LibraryRemoval
+

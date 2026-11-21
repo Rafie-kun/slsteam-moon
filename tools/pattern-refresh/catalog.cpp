@@ -1,4 +1,5 @@
 #include "catalog.hpp"
+#include "client_layout.hpp"
 
 #include "pattern_catalog.hpp"
 #include "utils/process_lock.hpp"
@@ -1322,17 +1323,12 @@ int PatternRefresh::refreshInstallation(
 	std::array<std::string, 2> diagnostics;
 	for (std::size_t index = 0; index < modules.size(); ++index)
 	{
-		std::filesystem::path modulePath =
-		    steamRoot / "steamrt64" / specifications[index].moduleName;
-		if (!std::filesystem::exists(modulePath))
-		{
-			modulePath =
-			    steamRoot / "ubuntu12_32" / specifications[index].moduleName;
-		}
 		modules[index] = inspectModule(
 			specifications[index].component,
 			specifications[index].moduleName,
-			modulePath,
+			ClientLayout::clientDirectory(
+			    steamRoot, std::getenv("STEAM_FORCE_CLIENT") ? std::getenv("STEAM_FORCE_CLIENT") : "")
+			    / specifications[index].moduleName,
 			patternRoot / ".state"
 			    / (std::string(specifications[index].component) + ".module.state"),
 			{},

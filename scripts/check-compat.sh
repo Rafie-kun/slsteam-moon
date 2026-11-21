@@ -19,14 +19,14 @@ echo "  SLSsteam Binary Compatibility Check"
 echo "========================================="
 echo ""
 
-# Check if it's 64-bit
+# Check if it's 32-bit
 FILE_OUTPUT=$(file "$BINARY")
 echo "Binary type:"
 echo "  $FILE_OUTPUT"
 echo ""
 
-if ! echo "$FILE_OUTPUT" | grep -q "64-bit"; then
-	echo "⚠️  WARNING: Binary is not 64-bit! steamrt64 requires 64-bit."
+if ! echo "$FILE_OUTPUT" | grep -q "32-bit"; then
+	echo "⚠️  WARNING: Binary is not 32-bit! Steam requires 32-bit."
 	echo ""
 fi
 
@@ -66,7 +66,7 @@ if [ -n "$SYSTEM_GLIBC" ]; then
 			echo ""
 			echo "Solutions:"
 			echo "  1. Rebuild locally: make clean && make"
-			echo "  2. Use the portable release build (glibc 2.34 floor)"
+			echo "  2. Use a pre-built release from upstream"
 		fi
 	fi
 fi
@@ -89,12 +89,23 @@ echo "Distribution compatibility (for glibc $HIGHEST_GLIBC+):"
 echo ""
 
 case "$HIGHEST_GLIBC" in
-	2.17|2.27|2.31)
-		echo "  ⚠️  Below the project's glibc 2.34 floor"
+	2.17)
+		echo "  ✅ Ubuntu 14.04+"
+		echo "  ✅ Debian 8+"
+		echo "  ✅ CentOS 7+"
+		echo "  ✅ All modern distros"
 		echo ""
-		echo "  This binary is older than the portable build target, so it is not a"
-		echo "  supported release artifact. scripts/check-sls-abi.sh only rejects the"
-		echo "  other direction (newer than the floor)."
+		echo "  🎯 MAXIMUM COMPATIBILITY"
+		;;
+	2.27)
+		echo "  ✅ Ubuntu 18.04+"
+		echo "  ✅ Debian 10+"
+		echo "  ✅ CentOS 8+"
+		;;
+	2.31)
+		echo "  ✅ Ubuntu 20.04+"
+		echo "  ✅ Debian 11+"
+		echo "  ✅ Fedora 32+"
 		;;
 	2.35|2.36)
 		echo "  ✅ Ubuntu 22.04+"
@@ -111,8 +122,8 @@ case "$HIGHEST_GLIBC" in
 		echo ""
 		echo "  ⚠️  LIMITED COMPATIBILITY"
 		echo ""
-		echo "  Consider rebuilding with the portable build for better portability:"
-		echo "    ./scripts/build.sh --portable"
+		echo "  Consider rebuilding with Docker for better portability:"
+		echo "    ./scripts/build/build-docker.sh"
 		;;
 	unknown)
 		echo "  (Cannot determine - objdump not available)"
@@ -122,15 +133,15 @@ esac
 echo ""
 
 # Build recommendation
-if [ "$HIGHEST_GLIBC" != "unknown" ] && [ "$HIGHEST_GLIBC" != "2.34" ]; then
+if [ "$HIGHEST_GLIBC" != "unknown" ] && [ "$HIGHEST_GLIBC" != "2.17" ]; then
 	echo "========================================="
 	echo "  Recommendation"
 	echo "========================================="
 	echo ""
-	echo "For a release-grade binary, build in the Ubuntu 22.04 container:"
+	echo "For maximum compatibility, rebuild with Docker:"
 	echo ""
-	echo "  ./scripts/build.sh --portable"
+	echo "  ./scripts/build/build-docker.sh"
 	echo ""
-	echo "The result is gated to require no GLIBC symbol newer than 2.34."
+	echo "This produces a binary that works on glibc 2.17+ (2012+)"
 	echo ""
 fi

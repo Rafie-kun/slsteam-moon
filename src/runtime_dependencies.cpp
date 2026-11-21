@@ -39,7 +39,6 @@ namespace
 std::string missingToolsOnPath(const char* path)
 {
 	return missingTools(
-		executableOnPath(path, "unzip"),
 		executableOnPath(path, "gzip"),
 		executableOnPath(path, "timeout")
 	);
@@ -51,16 +50,7 @@ bool check()
 	static bool available = false;
 	std::call_once(once, []
 	{
-		const char* pathEnv = std::getenv("PATH");
-		std::string effectivePath = pathEnv ? pathEnv : "";
-		// Inside SteamRT pressure-vessel, host utilities like unzip live
-		// under /run/host/usr/bin rather than the container's /usr/bin.
-		if (access("/run/host/usr/bin", F_OK) == 0)
-		{
-			if (!effectivePath.empty()) effectivePath += ':';
-			effectivePath += "/run/host/usr/bin:/run/host/bin";
-		}
-		const std::string missing = missingToolsOnPath(effectivePath.c_str());
+		const std::string missing = missingToolsOnPath(std::getenv("PATH"));
 		available = missing.empty();
 		if (!available && g_pLog)
 		{

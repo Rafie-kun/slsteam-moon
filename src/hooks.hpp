@@ -96,10 +96,12 @@ namespace Hooks
 	typedef uint32_t(*CSteamEngine_ProcessIPCFrame_t)(void*, HSteamPipe, CUtlBuffer*, CUtlBuffer*);
 	typedef uint32_t(*CSteamEngine_SetAppIdForCurrentPipe_t)(void*, uint32_t, bool);
 
-	typedef gameserverdetails_t*(*CSteamMatchmakingServers_GetServerDetails_t)(void*, uint32_t, uint32_t);
-	typedef uint32_t(*CSteamMatchmakingServers_RequestInternetServerList_t)(void*, uint32_t, uint32_t, uint32_t, uint32_t);
+	// HServerRequest is a pointer-sized handle; a 32-bit parameter would cut it on x86_64.
+	typedef gameserverdetails_t*(*CSteamMatchmakingServers_GetServerDetails_t)(void*, uintptr_t, uint32_t);
+	typedef uintptr_t(*CSteamMatchmakingServers_RequestInternetServerList_t)(void*, uint32_t, void*, uint32_t, void*);
 
-	typedef uint32_t(*CUser_CheckAppOwnership_t)(void*, uint32_t, CAppOwnershipInfo*);
+	// bool: the callee sets al only; reading a wider type would see stale upper bits.
+	typedef bool(*CUser_CheckAppOwnership_t)(void*, uint32_t, CAppOwnershipInfo*);
 	typedef uint32_t(*CUser_GetSubscribedApps_t)(void*, uint32_t*, uint32_t, uint8_t);
 	typedef uint32_t(*CUser_PostCallbackToAppId_t)(void*, uint32_t, uint32_t, void*, uint32_t);
 	typedef uint32_t(*IClientFriends_GetFriendGamePlayed_t)(void*, uint64_t, GamePlayed_t*);
@@ -117,7 +119,13 @@ namespace Hooks
 	typedef bool(*CWebSocketConnection_BBuildAndAsyncSendFrame_t)(void*, EWebSocketOpCode, uint8_t*, uint32_t);
 	typedef void*(*CRemoteClientManager_RecvPkt_t)(void*, CRemoteClientPacket*);
 
+#if defined(__x86_64__)
+	// The x86_64 function takes a fifth argument (an int compared against -1, passed
+	// in r8d): forgetting it would hand the original a garbage register.
+	typedef bool(*CJobMgr_BRouteMsgToJob_t)(void*, void*, void*, void*, int32_t);
+#else
 	typedef bool(*CJobMgr_BRouteMsgToJob_t)(void*, void*, void*, void*);
+#endif
 
 	typedef bool(*CDepotDownloadMgr_BYldRequestDepotManifest_t)(void*, uint32_t, uint32_t, uint64_t, const char*, void*);
 
@@ -168,7 +176,9 @@ namespace Hooks
 	typedef void*(*IClientAppManager_LaunchApp_t)(void*, uint32_t*, void*, void*, void*);
 	typedef bool(*IClientAppManager_IsAppDlcInstalled_t)(void*, uint32_t, uint32_t);
 	typedef unsigned int(*IClientApps_GetDLCCount_t)(void*, uint32_t);
-	typedef bool(*IClientApps_GetDLCDataByIndex_t)(void*, uint32_t, int, uint32_t*, bool*, char*, size_t);
+	// The size is a 32-bit argument: as size_t on x86_64 the hook would read the stale upper
+	// half of its 8-byte stack slot and use it as a buffer limit.
+	typedef bool(*IClientApps_GetDLCDataByIndex_t)(void*, uint32_t, int, uint32_t*, bool*, char*, uint32_t);
 	typedef int32_t(*IClientApps_GetAppData_t)(void*, uint32_t, const char*, char*, uint32_t);
 	typedef bool(*IClientRemoteStorage_IsCloudEnabledForApp_t)(void*, uint32_t);
 	typedef uint32_t(*IClientUtils_GetAppId_t)(void*);

@@ -1,4 +1,5 @@
 #include "hooks.hpp"
+#include "detour_x64.hpp"
 
 #include "config.hpp"
 #include "globals.hpp"
@@ -137,8 +138,35 @@ bool DetourHook<T>::setup(Pattern_t pattern, T hookFn)
 template<typename T>
 void DetourHook<T>::place()
 {
+	// A hook that was never set up (no locator for this architecture, or an
+	// optional one that did not resolve) has no address to detour.
+	if (this->originalFn.address == 0 || this->originalFn.address == LM_ADDRESS_BAD)
+	{
+		return;
+	}
+
+#if defined(__x86_64__)
+	// LM_HookCode leaves the displaced prologue unrelocated, in memory anywhere in the
+	// address space (observed: 5 GiB away): RIP-relative operands and relative jumps in
+	// it then hit the wrong target.  DetourX64 builds the trampoline near the target and
+	// relocates it; a prologue it cannot relocate is left unhooked.
+	{
+		std::string reason;
+		const auto placed = DetourX64::place(this->originalFn.address, this->hookFn.address, &reason);
+		if (!placed)
+		{
+			g_pLog->warn("Detour %s not placed: %s\n", this->name.c_str(), reason.c_str());
+			this->size = 0;
+			this->tramp.address = LM_ADDRESS_BAD;
+			return;
+		}
+		this->size = placed->displaced;
+		this->tramp.address = placed->trampoline;
+	}
+#else
 	this->size = LM_HookCode(this->originalFn.address, this->hookFn.address, &this->tramp.address);
 	MemHlp::fixPICThunkCall(this->name.c_str(), this->originalFn.address, this->tramp.address);
+#endif
 
 	if (RuntimeAttestation::enabled())
 	{
@@ -207,7 +235,11 @@ void DetourHook<T>::remove()
 		return;
 	}
 
+#if defined(__x86_64__)
+	DetourX64::remove(this->originalFn.address);
+#else
 	LM_UnhookCode(this->originalFn.address, this->tramp.address, this->size);
+#endif
 	this->size = 0;
 
 	g_pLog->debug("Unhooked %s\n", this->name.c_str());
@@ -461,10 +493,7 @@ static uint32_t hkSteamEngine_ProcessIPCFrame(
 	if (cmd == EIPCCmd::ConnectPipe)
 	{
 		const auto serverPipe = g_pSteamEngine->getServerPipe(hPipe);
-		//plausibleServerPipe(): the 64-bit CServerPipe offsets are unverified,
-		//so a wrong layout must fail the pipe registration, not key it off a
-		//mis-read pid.
-		if (plausibleServerPipe(serverPipe))
+		if (serverPipe)
 		{
 			Process_t process{};
 			if (process.init(serverPipe->pid, serverPipe->pipeHandle))
@@ -495,6 +524,7 @@ static uint32_t hkSteamEngine_ProcessIPCFrame(
 	return ret;
 }
 
+#if !defined(__x86_64__)
 static void hkSteamEngine_Init(void* pSteamEngine)
 {
 	Hooks::CSteamEngine_Init.tramp.fn(pSteamEngine);
@@ -502,6 +532,7 @@ static void hkSteamEngine_Init(void* pSteamEngine)
 	g_pSteamEngine = reinterpret_cast<CSteamEngine*>(pSteamEngine);
 	g_pLog->debugOnce("g_pSteamEngine at %p\n", pSteamEngine);
 }
+#endif
 
 static uint32_t hkSteamEngine_SetAppIdForCurrentPipe(void* pSteamEngine, uint32_t appId, bool a2)
 {
@@ -523,7 +554,7 @@ static uint32_t hkSteamEngine_SetAppIdForCurrentPipe(void* pSteamEngine, uint32_
 	return ret;
 }
 
-static gameserverdetails_t* hkSteamMatchmakingServers_GetServerDetails(void* pSteamMatchmakingServers, uint32_t handle, uint32_t serverIdx)
+static gameserverdetails_t* hkSteamMatchmakingServers_GetServerDetails(void* pSteamMatchmakingServers, uintptr_t handle, uint32_t serverIdx)
 {
 	gameserverdetails_t* ret = Hooks::CSteamMatchmakingServers_GetServerDetails.tramp.fn(pSteamMatchmakingServers, handle, serverIdx);
 
@@ -533,7 +564,7 @@ static gameserverdetails_t* hkSteamMatchmakingServers_GetServerDetails(void* pSt
 
 		Hooks::CSteamMatchmakingServers_GetServerDetails.name.c_str(),
 		pSteamMatchmakingServers,
-		handle,
+		reinterpret_cast<void*>(handle),
 		serverIdx,
 		ret
 	);
@@ -546,15 +577,15 @@ static gameserverdetails_t* hkSteamMatchmakingServers_GetServerDetails(void* pSt
 	return ret;
 }
 
-static uint32_t hkSteamMatchmakingServers_RequestInternetServerList(void* pSteamMatchmakingServers, uint32_t appId, uint32_t a2, uint32_t a3, uint32_t a4)
+static uintptr_t hkSteamMatchmakingServers_RequestInternetServerList(void* pSteamMatchmakingServers, uint32_t appId, void* a2, uint32_t a3, void* a4)
 {
 	const uint32_t fake = FakeAppIds::requestInternetServerList(appId);
 
-	uint32_t handle = Hooks::CSteamMatchmakingServers_RequestInternetServerList.tramp.fn(pSteamMatchmakingServers, fake ? fake : appId, a2, a3, a4);
+	uintptr_t handle = Hooks::CSteamMatchmakingServers_RequestInternetServerList.tramp.fn(pSteamMatchmakingServers, fake ? fake : appId, a2, a3, a4);
 
 	g_pLog->debug
 	(
-		"%s(%p, %u, %p, %p, %p)->%p\n",
+		"%s(%p, %u, %p, %u, %p)->%p\n",
 
 		Hooks::CSteamMatchmakingServers_RequestInternetServerList.name.c_str(),
 		pSteamMatchmakingServers,
@@ -562,7 +593,7 @@ static uint32_t hkSteamMatchmakingServers_RequestInternetServerList(void* pSteam
 		a2,
 		a3,
 		a4,
-		handle
+		reinterpret_cast<void*>(handle)
 	);
 
 	FakeAppIds::fakeAppIdMapServer[handle] = appId;
@@ -571,7 +602,7 @@ static uint32_t hkSteamMatchmakingServers_RequestInternetServerList(void* pSteam
 }
 
 __attribute__((hot))
-static uint32_t hkUser_CheckAppOwnership(void* pClientUser, uint32_t appId, CAppOwnershipInfo* pOwnershipInfo)
+static bool hkUser_CheckAppOwnership(void* pClientUser, uint32_t appId, CAppOwnershipInfo* pOwnershipInfo)
 {
 	// Cache the local CUser* as a timing-independent fallback for
 	// getLocalUser().  This hook fires early and constantly with the
@@ -584,8 +615,8 @@ static uint32_t hkUser_CheckAppOwnership(void* pClientUser, uint32_t appId, CApp
 	}
 
 	const auto statsContext = StatsPolicy::context();
-	const uint32_t ret = Hooks::CUser_CheckAppOwnership.tramp.fn(pClientUser, appId, pOwnershipInfo);
-	StatsPolicy::observe(statsContext, appId, ret != 0, pOwnershipInfo);
+	const bool ret = Hooks::CUser_CheckAppOwnership.tramp.fn(pClientUser, appId, pOwnershipInfo);
+	StatsPolicy::observe(statsContext, appId, ret, pOwnershipInfo);
 
 	g_pLog->debugOnce
 	(
@@ -594,7 +625,7 @@ static uint32_t hkUser_CheckAppOwnership(void* pClientUser, uint32_t appId, CApp
 		Hooks::CUser_CheckAppOwnership.name.c_str(),
 		pClientUser,
 		appId,
-		ret
+		static_cast<int>(ret)
 	);
 
 	// Drive the one-shot package-0 license reconcile from here: this
@@ -637,10 +668,7 @@ static uint32_t hkUser_GetSubscribedApps(void* pClientUser, uint32_t* pAppList, 
 
 static uint32_t hkUser_PostCallbackToAppId(void* pUser, uint32_t appId, uint32_t type, void* pCallback, uint32_t callbackSize)
 {
-	// The "0:" wildcard must not catch SteamUI's own callbacks (appId 0 and
-	// its internal ids): LaunchApp waits at SynchronizingStats for the
-	// UserStatsReceived_t posted there and hangs if it is rerouted.
-	const uint32_t fakeAppId = FakeAppIds::getFakeAppId(appId, true);
+	const uint32_t fakeAppId = FakeAppIds::getFakeAppId(appId);
 	if (fakeAppId)
 	{
 		g_pLog->debug("Rerouting callback from %u to %u\n", appId, fakeAppId);
@@ -838,12 +866,13 @@ static unsigned int hkClientApps_GetDLCCount(void* pClientApps, uint32_t appId)
 	return count;
 }
 
-static bool hkClientApps_GetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex, uint32_t* pDlcId, bool* pIsAvailable, char* pChDlcName, size_t dlcNameLen)
+static bool hkClientApps_GetDLCDataByIndex(void* pClientApps, uint32_t appId, int dlcIndex, uint32_t* pDlcId, bool* pIsAvailable, char* pChDlcName, uint32_t dlcNameLen)
 {
 	appId = FakeAppIds::getRealAppIdForCurrentPipe();
 
+	size_t nameLen = dlcNameLen; // in/out for DLC::, which works in size_t
 	bool ret = DLC::getDlcDataByIndex(
-		appId, dlcIndex, pDlcId, pIsAvailable, pChDlcName, dlcNameLen);
+		appId, dlcIndex, pDlcId, pIsAvailable, pChDlcName, nameLen);
 	if (!ret)
 	{
 		ret = Hooks::IClientApps_GetDLCDataByIndex.originalFn.fn(
@@ -1506,7 +1535,11 @@ bool Hooks::setup()
 
 		&& IClientFriends_GetFriendGamePlayed.setup(Patterns::IClientFriends::GetFriendGamePlayed, &hkClientFriends_GetFriendGamePlayed)
 
+#if !defined(__x86_64__)
+		// x86_64 captures g_pSteamEngine from ProcessIPCFrame instead; there is
+		// no x86_64 locator for Init and none is needed.
 		&& CSteamEngine_Init.setup(Patterns::CSteamEngine::Init, &hkSteamEngine_Init)
+#endif
 		&& CSteamEngine_ProcessIPCFrame.setup(Patterns::CSteamEngine::ProcessIPCFrame, &hkSteamEngine_ProcessIPCFrame)
 		&& CSteamEngine_SetAppIdForCurrentPipe.setup(Patterns::CSteamEngine::SetAppIdForCurrentPipe, &hkSteamEngine_SetAppIdForCurrentPipe)
 

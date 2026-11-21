@@ -21,7 +21,9 @@ public:
 	// dispatch patterns in place before find() runs, to absorb Steam-update
 	// id drift.  Every other pattern is left untouched.
 	std::string pattern;
-	const MemHlp::SigFollowMode followMode;
+	// Not const: on x86_64 the locator table (patterns_x86_64.hpp) replaces the
+	// i386 signature, follow mode and prologue before anything is scanned.
+	MemHlp::SigFollowMode followMode;
 	std::vector<int16_t> prologue;
 
 	// When true, a failure to resolve this pattern does NOT make
@@ -30,6 +32,15 @@ public:
 	// feature where "not found" must degrade to a safe no-op rather
 	// than disabling SLSsteam entirely.
 	bool optional = false;
+
+	// x86_64 only: set when the locator is a vtable slot found through RTTI
+	// instead of a byte signature (see rtti_vtable.hpp).
+	std::string rttiClass;
+	std::string rttiBase;
+	int vtableSlot = -1;
+	// x86_64 only: the strings a StringXref locator's function must load.
+	std::vector<std::string> xrefStrings;
+	bool preferMostCalled = false;
 
 	lm_address_t address = LM_ADDRESS_BAD;
 	// The raw signature match is kept separately from the followed target so a

@@ -24,7 +24,11 @@ namespace ManifestCode
 
 	void* hkRecvPkt(void* pManager, CRemoteClientPacket* pPacket);
 
+#if defined(__x86_64__)
+	bool hkBRouteMsgToJob(void* pJobMgr, void* arg2, void* pMsg, void* pJob, int32_t arg5);
+#else
 	bool hkBRouteMsgToJob(void* pJobMgr, void* arg2, void* pMsg, void* pJob);
+#endif
 
 	bool hkCDepotDownloadMgr_BYldRequestDepotManifest(void* pthis, uint32_t appId, uint32_t depotId, uint64_t manifestId, const char* branch, void* arg20);
 }

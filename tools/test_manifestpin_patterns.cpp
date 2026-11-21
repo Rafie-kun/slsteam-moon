@@ -73,15 +73,6 @@ static bool hasPushLiteralBefore(const std::string& image, size_t call,
 
 int main(int argc, char** argv)
 {
-#if defined(__x86_64__)
-	// The call-site patterns here are 32-bit code shapes. The steamrt64 port
-	// keeps its locators in src/patterns.cpp instead, so there is nothing to
-	// grep for in a 64-bit image yet.
-	(void)argc;
-	(void)argv;
-	std::cout << "skipped: 32-bit call-site patterns, not ported to steamrt64\n";
-	return 0;
-#endif
 	if (argc != 2)
 	{
 		std::cerr << "usage: test_manifestpin_patterns /path/to/steamclient.so\n";

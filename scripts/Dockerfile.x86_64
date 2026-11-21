@@ -1,0 +1,22 @@
+# Builder image for the x86_64 (steamrt64) portable build.
+#
+# Same idea as scripts/Dockerfile (Ubuntu 22.04, glibc 2.35, binaries gated to GLIBC_2.34),
+# without the 32-bit toolchain: SLSsteam.so is loaded by the 64-bit Steam client.
+# The checked-in lib/x86_64/*.a carry no symbol newer than GLIBC_2.34; the newer
+# __isoc23_strto* references come from compiling against a recent glibc, which this
+# image does not have.
+#
+# Used by scripts/build.sh --portable when ARCH is x86_64 (the default on a 64-bit host).
+FROM ubuntu:22.04
+
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        ca-certificates \
+        g++ \
+        libcurl4-openssl-dev \
+        libssl-dev \
+        make \
+        pkg-config && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build

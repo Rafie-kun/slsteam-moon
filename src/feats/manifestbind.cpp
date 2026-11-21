@@ -23,6 +23,10 @@
 
 #include "libmem/libmem.h"
 
+#if defined(__x86_64__)
+#include "../detour_x64.hpp"
+#endif
+
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -78,19 +82,23 @@ namespace
 	// it); PrepareDepotDownload's is at +5 (not relocated -> fixPICThunkCall
 	// is a harmless no-op).
 #if defined(__x86_64__)
+	// SysV: (rdi ctx, rsi a0C, edx appId, ecx depotId, r8 manifestId, r9 a20).  The
+	// two pass-through words are full registers: the callee keeps them whole
+	// (a0C is stored as a QWORD), so they travel as pointer-sized values.
 	using DepotFn_t = void*(*)(void*, uintptr_t, uint32_t, uint32_t,
 	                           uint64_t, uintptr_t);
-
-	// FUNC_1141 / CDepotDownloadMgr::BuildDepotDependency — 8 args in SysV AMD64.
-	using BuildDepFn_t = void*(*)(void*, uint32_t, void*, uintptr_t,
-	                              uintptr_t, uintptr_t, uintptr_t, uintptr_t);
 #else
 	using DepotFn_t = void*(*)(void*, uint32_t, uint32_t, uint32_t,
 	                           uint64_t, uint32_t);
+#endif
 
 	// FUNC_1141 / CDepotDownloadMgr::BuildDepotDependency — the install-plan
 	// consumer.  cdecl, 4 dwords:
 	//   (void* ctx, uint32_t flag, CUtlVector<DepotEntry>* depots, uint32_t a3)
+#if defined(__x86_64__)
+	// x86_64: (rdi ctx, esi flag, rdx CUtlVector<DepotEntry>*, rcx a3 - a pointer here).
+	using BuildDepFn_t = void*(*)(void*, uint32_t, void*, uintptr_t);
+#else
 	using BuildDepFn_t = void*(*)(void*, uint32_t, void*, uint32_t);
 #endif
 
@@ -99,9 +107,8 @@ namespace
 	//   +0x08 u64 ManifestGid   +0x10 u64 ManifestSize
 	//   +0x18 u32 DlcAppId   +0x1c u8 Lcs   +0x1d u8 bNotNewTarget
 	//   +0x1e u8 SharedInstall ; stride 0x20.
-	// CUtlVector<DepotEntry>:
-	//   32-bit: base @ +0x00, capacity @ +0x04, count @ +0x0c.
-	//   64-bit: base @ +0x00, capacity @ +0x08, count @ +0x10.
+	// CUtlVector<DepotEntry>: element base @ +0x00 (memory.base),
+	//   count (size) @ +0x0c.
 	constexpr size_t kDepotEntryStride = ManagedDepotFilter::kDepotEntryStride;
 	constexpr size_t kDepotEntryAppIdOff = 0x04;
 	constexpr size_t kDepotEntryGidOff = 0x08;
@@ -109,6 +116,7 @@ namespace
 	constexpr size_t kDepotEntryDlcAppIdOff = 0x18;
 	constexpr size_t kVecBaseOff = 0x00;
 #if defined(__x86_64__)
+	// CUtlMemory { T* base; int allocationCount; int growSize; } then int size.
 	constexpr size_t kVecCapacityOff = 0x08;
 	constexpr size_t kVecCountOff = 0x10;
 #else
@@ -665,12 +673,13 @@ namespace
 	}
 
 #if defined(__x86_64__)
-	void* hkProcessDepot(void* ctx, uintptr_t a0C, uint32_t appId,
-	                     uint32_t depotId, uint64_t manifestId, uintptr_t a20)
+	using PassWord_t = uintptr_t;
 #else
-	void* hkProcessDepot(void* ctx, uint32_t a0C, uint32_t appId,
-	                     uint32_t depotId, uint64_t manifestId, uint32_t a20)
+	using PassWord_t = uint32_t;
 #endif
+
+	void* hkProcessDepot(void* ctx, PassWord_t a0C, uint32_t appId,
+	                     uint32_t depotId, uint64_t manifestId, PassWord_t a20)
 	{
 		logPlanStack("leaf", g_traceLeftLeaf, appId, depotId, manifestId);
 		const uint64_t useGid =
@@ -678,13 +687,8 @@ namespace
 		return g_leaf.orig(ctx, a0C, appId, depotId, useGid, a20);
 	}
 
-#if defined(__x86_64__)
-	void* hkPrepareDepot(void* ctx, uintptr_t a0C, uint32_t appId,
-	                     uint32_t depotId, uint64_t manifestId, uintptr_t a20)
-#else
-	void* hkPrepareDepot(void* ctx, uint32_t a0C, uint32_t appId,
-	                     uint32_t depotId, uint64_t manifestId, uint32_t a20)
-#endif
+	void* hkPrepareDepot(void* ctx, PassWord_t a0C, uint32_t appId,
+	                     uint32_t depotId, uint64_t manifestId, PassWord_t a20)
 	{
 		logPlanStack("plan", g_traceLeftPlanner, appId, depotId, manifestId);
 		const uint64_t useGid =
@@ -702,12 +706,7 @@ namespace
 	//
 	// Defensive: bail on an implausible vector (null base / out-of-range count)
 	// so a signature/ABI drift degrades to a harmless pass-through.
-#if defined(__x86_64__)
-	void* hkBuildDepot(void* ctx, uint32_t flag, void* depots, uintptr_t a3,
-	                   uintptr_t a4, uintptr_t a5, uintptr_t a6, uintptr_t a7)
-#else
-	void* hkBuildDepot(void* ctx, uint32_t flag, void* depots, uint32_t a3)
-#endif
+	void* hkBuildDepot(void* ctx, uint32_t flag, void* depots, PassWord_t a3)
 	{
 		if (depots)
 		{
@@ -878,11 +877,7 @@ namespace
 				    static_cast<void*>(base), count, capacity);
 			}
 		}
-#if defined(__x86_64__)
-		return g_builder.orig(ctx, flag, depots, a3, a4, a5, a6, a7);
-#else
 		return g_builder.orig(ctx, flag, depots, a3);
-#endif
 	}
 
 	// Install one detour; returns false (and leaves the Detour cleared) on
@@ -896,6 +891,19 @@ namespace
 			return false;
 		}
 		d.addr = pat.address;
+#if defined(__x86_64__)
+		std::string reason;
+		const auto placed = DetourX64::place(d.addr, reinterpret_cast<lm_address_t>(hookFn), &reason);
+		if (!placed)
+		{
+			g_pLog->warn("ManifestBind: failed to install %s hook: %s\n",
+			             pat.name.c_str(), reason.c_str());
+			d = Detour{};
+			return false;
+		}
+		d.size = placed->displaced;
+		d.tramp = placed->trampoline;
+#else
 		d.size = LM_HookCode(d.addr, reinterpret_cast<lm_address_t>(hookFn),
 		                     &d.tramp);
 		if (!d.size || d.tramp == LM_ADDRESS_BAD)
@@ -906,6 +914,7 @@ namespace
 			return false;
 		}
 		MemHlp::fixPICThunkCall(pat.name.c_str(), d.addr, d.tramp);
+#endif
 		d.orig = reinterpret_cast<DepotFn_t>(d.tramp);
 		g_pLog->debug("ManifestBind: %s detour at %p, tramp at %p\n",
 		              pat.name.c_str(),
@@ -918,7 +927,11 @@ namespace
 	{
 		if (d.size && d.addr != LM_ADDRESS_BAD && d.tramp != LM_ADDRESS_BAD)
 		{
+#if defined(__x86_64__)
+			DetourX64::remove(d.addr);
+#else
 			LM_UnhookCode(d.addr, d.tramp, d.size);
+#endif
 		}
 		d = Detour{};
 	}
@@ -933,6 +946,19 @@ namespace
 			return false;
 		}
 		g_builder.addr = pat.address;
+#if defined(__x86_64__)
+		std::string reason;
+		const auto placed = DetourX64::place(g_builder.addr, reinterpret_cast<lm_address_t>(hookFn), &reason);
+		if (!placed)
+		{
+			g_pLog->warn("ManifestBind: failed to install %s hook: %s\n",
+			             pat.name.c_str(), reason.c_str());
+			g_builder = BuildDetour{};
+			return false;
+		}
+		g_builder.size = placed->displaced;
+		g_builder.tramp = placed->trampoline;
+#else
 		g_builder.size = LM_HookCode(g_builder.addr,
 		                             reinterpret_cast<lm_address_t>(hookFn),
 		                             &g_builder.tramp);
@@ -944,6 +970,7 @@ namespace
 			return false;
 		}
 		MemHlp::fixPICThunkCall(pat.name.c_str(), g_builder.addr, g_builder.tramp);
+#endif
 		g_builder.orig = reinterpret_cast<BuildDepFn_t>(g_builder.tramp);
 		g_pLog->debug("ManifestBind: %s detour at %p, tramp at %p\n",
 		              pat.name.c_str(),
@@ -1001,7 +1028,11 @@ namespace ManifestBind
 		if (g_builder.size && g_builder.addr != LM_ADDRESS_BAD
 		    && g_builder.tramp != LM_ADDRESS_BAD)
 		{
+#if defined(__x86_64__)
+			DetourX64::remove(g_builder.addr);
+#else
 			LM_UnhookCode(g_builder.addr, g_builder.tramp, g_builder.size);
+#endif
 		}
 		g_builder = BuildDetour{};
 	}

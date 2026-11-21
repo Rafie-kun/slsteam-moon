@@ -152,8 +152,8 @@ namespace PatternsX64
 			  "5CUser", "11IClientUser", 183, "14IClientUserMap", "GetSubscribedApps" },
 			{ "IClientAppManager::BCanRemotePlayTogether", "", Follow::VtableSlot, {},
 			  "15CUserAppManager", "", 73, "20IClientAppManagerMap", "BCanRemotePlayTogether" },
-			{ "IClientFriends::GetFriendGamePlayed", "", Follow::VtableSlot, {},
-			  "12CUserFriends", "14IClientFriends", 23, "17IClientFriendsMap", "GetFriendGamePlayed" },
+			{ "IClientFriends::GetFriendGamePlayed", "", Follow::None, {},
+			  "48 89 F0 53 48 89 D3 48 C1 E8 30 3C 0F 0F 86 ? ? ? ? 48 89 F2 48 C1 EA 34 83 E2 0F 80 FA 0A 0F 87 ? ? ? ?", {} },
 			// ISteamMatchmakingServers order: RequestInternetServerList = 0, GetServerDetails = 7.
 			{ "CSteamMatchmakingServers::RequestInternetServerList", "", Follow::VtableSlot, {},
 			  "24CSteamMatchMakingServers", "", 0 },

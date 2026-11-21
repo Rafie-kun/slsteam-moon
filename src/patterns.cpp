@@ -1744,9 +1744,9 @@ namespace Patterns
 		Pattern_t GetFriendGamePlayed
 		{
 			"IClientFriends::GetFriendGamePlayed",
-			"C7 45 ? A2 F1 5B 33 6A 04 50 57 E8 ? ? ? ?",
-			SigFollowMode::PrologueUpwards,
-			std::vector<uint8_t> { 0x56, 0x57, 0xE5, 0x89, 0x55 }
+			"48 89 F0 53 48 89 D3 48 C1 E8 30 3C 0F 0F 86 ? ? ? ? 48 89 F2 48 C1 EA 34 83 E2 0F 80 FA 0A 0F 87 ? ? ? ?",
+			SigFollowMode::None,
+			{}
 		};
 	}
 
